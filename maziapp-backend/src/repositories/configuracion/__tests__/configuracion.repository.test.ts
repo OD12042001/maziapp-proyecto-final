@@ -29,7 +29,10 @@ jest.mock("../../../config/sql", () => {
 });
 
 import * as sqlConfig from "../../../config/sql";
-import { findParametroEntero } from "../configuracion.repository";
+import {
+  findParametroDecimal,
+  findParametroEntero,
+} from "../configuracion.repository";
 
 const state: any = (sqlConfig as any).__state;
 
@@ -71,5 +74,23 @@ describe("findParametroEntero", () => {
 
     expect(await findParametroEntero("KYC_SLA_DIAS")).toBeNull();
     expect(await findParametroEntero("KYC_SLA_DIAS")).toBeNull();
+  });
+});
+
+describe("findParametroDecimal", () => {
+  test("lee un parámetro DECIMAL y lo devuelve como número", async () => {
+    state.results = [{ recordset: [{ Valor: "3.00", TipoDato: "DECIMAL" }] }];
+
+    expect(await findParametroDecimal("COMISION_TASA_PORCENTAJE")).toBe(3);
+  });
+
+  test("devuelve null si falta o no es numérico", async () => {
+    state.results = [
+      { recordset: [] },
+      { recordset: [{ Valor: "abc", TipoDato: "DECIMAL" }] },
+    ];
+
+    expect(await findParametroDecimal("COMISION_TASA_PORCENTAJE")).toBeNull();
+    expect(await findParametroDecimal("COMISION_TASA_PORCENTAJE")).toBeNull();
   });
 });

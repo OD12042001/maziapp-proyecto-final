@@ -62,3 +62,19 @@ import "./functions/esb/getOutboxFallidos";
 import "./functions/esb/getOutboxEvento";
 import "./functions/esb/procesarOutbox";
 import "./functions/esb/esbCorsPreflight";
+
+// S15 Cierres de inversión
+import "./functions/cierres/getCierres";
+import "./functions/cierres/createCierre";
+import "./functions/cierres/getCierre";
+import "./functions/cierres/cierresCorsPreflight";
+
+// S16/S17 Comisiones y reversión
+import "./functions/comisiones/getComisiones";
+import "./functions/comisiones/getComision";
+import "./functions/comisiones/revertirComision";
+import "./functions/comisiones/comisionesCorsPreflight";
+
+// Saga BPM
+import "./functions/saga/getSaga";
+import "./functions/saga/sagaCorsPreflight";

@@ -32,3 +32,28 @@ export async function findParametroEntero(
 
   return Number.isInteger(valor) ? valor : null;
 }
+
+export async function findParametroDecimal(
+  clave: string,
+): Promise<number | null> {
+  const pool = await getPool();
+
+  const result = await pool
+    .request()
+    .input("clave", sql.NVarChar(100), clave)
+    .query(`
+      SELECT Valor, TipoDato
+      FROM dbo.ConfiguracionParametros
+      WHERE Clave = @clave AND Activo = 1
+    `);
+
+  const row = result.recordset[0];
+
+  if (!row || (row.TipoDato !== "DECIMAL" && row.TipoDato !== "ENTERO")) {
+    return null;
+  }
+
+  const valor = Number(row.Valor);
+
+  return Number.isFinite(valor) ? valor : null;
+}

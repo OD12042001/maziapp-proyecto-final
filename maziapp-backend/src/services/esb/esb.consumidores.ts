@@ -1,6 +1,8 @@
 import * as auditoria from "../../repositories/auditoria/auditoria.repository";
 import { Ejecutor } from "../../repositories/auditoria/auditoria.repository";
 import { TipoEventoOutbox } from "../../repositories/esb/outbox.repository";
+import { calcularComisionParaCierreEnTx } from "../comisiones/comisiones.service";
+import { procesarEventoEnSaga } from "../saga/saga.service";
 
 /**
  * Registro de consumidores del ESB lógico.
@@ -94,10 +96,62 @@ export const consumidorTraza: Consumidor = {
   },
 };
 
-/** Restablece el registro al estado de fábrica (solo traza). */
+/**
+ * Consumidor de negocio S16: al entregarse `CierreGanadoRegistrado`,
+ * calcula la comisión del 3 % (incluido IGV) y publica
+ * `ComisionCalculada` en la misma transacción.
+ */
+export const CONSUMIDOR_COMISION_S16 = "CalculoComisionS16";
+
+export const consumidorCalculoComision: Consumidor = {
+  nombre: CONSUMIDOR_COMISION_S16,
+  tipos: ["CierreGanadoRegistrado"],
+  async manejar(mensaje, tx) {
+    const cierreId = Number(
+      mensaje.payload?.cierreId ?? mensaje.agregadoId,
+    );
+
+    if (!Number.isInteger(cierreId) || cierreId <= 0) {
+      throw new Error(
+        `Evento CierreGanadoRegistrado (${mensaje.outboxId}) sin cierreId válido`,
+      );
+    }
+
+    await calcularComisionParaCierreEnTx(
+      tx,
+      cierreId,
+      mensaje.correlationId,
+    );
+  },
+};
+
+/**
+ * Consumidor BPM (S4): mantiene el estado de la instancia de saga y sus
+ * pasos para cada oportunidad, y ejecuta la compensación si KYC se
+ * rechaza o la comisión se revierte.
+ */
+export const CONSUMIDOR_SAGA_BPM = "OrquestadorSagaBpm";
+
+export const consumidorSagaBpm: Consumidor = {
+  nombre: CONSUMIDOR_SAGA_BPM,
+  tipos: [
+    "EtapaCambiada",
+    "KycEstadoCambiado",
+    "CierreGanadoRegistrado",
+    "ComisionCalculada",
+    "ComisionRevertida",
+  ],
+  async manejar(mensaje, tx) {
+    await procesarEventoEnSaga(mensaje, tx);
+  },
+};
+
+/** Restablece el registro al estado de fábrica (traza + S16 + Saga BPM). */
 export function reiniciarConsumidores(): void {
   consumidores.clear();
   registrarConsumidor(consumidorTraza);
+  registrarConsumidor(consumidorCalculoComision);
+  registrarConsumidor(consumidorSagaBpm);
 }
 
 reiniciarConsumidores();

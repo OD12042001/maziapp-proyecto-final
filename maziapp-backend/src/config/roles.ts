@@ -164,3 +164,58 @@ export const AUDITORIA_ROLES_LECTURA: AppRole[] = [
  * mueve mensajes entre servicios; no es una capacidad de negocio.
  */
 export const ESB_ROLES_ADMIN: AppRole[] = [APP_ROLES.ADMINISTRACION];
+
+/**
+ * Roles con lectura del módulo Cierres (S15), según `docs/openapi.yaml`
+ * (`GET /cierres`, `GET /cierres/{cierreId}`): el freelance ve solo su
+ * cartera; Dirección Comercial, Administración y Gerencia General ven
+ * todos.
+ */
+export const CIERRES_ROLES_LECTURA: AppRole[] = [
+  APP_ROLES.FREELANCE,
+  APP_ROLES.DIRECCION_COMERCIAL,
+  APP_ROLES.ADMINISTRACION,
+  APP_ROLES.GERENCIA_GENERAL,
+];
+
+/**
+ * Roles con escritura en Cierres (`POST /cierres`): exclusivo de
+ * Freelance (`ejecutivo_inversion`).
+ */
+export const CIERRES_ROLES_ESCRITURA: AppRole[] = [APP_ROLES.FREELANCE];
+
+/**
+ * Roles con lectura del módulo Comisiones (S16/S17), según
+ * `docs/openapi.yaml` (`GET /comisiones`, `GET /comisiones/{comisionId}`):
+ * el freelance ve solo sus comisiones; Dirección Comercial, Administración
+ * y Gerencia General ven todas.
+ */
+export const COMISIONES_ROLES_LECTURA: AppRole[] = [
+  APP_ROLES.FREELANCE,
+  APP_ROLES.DIRECCION_COMERCIAL,
+  APP_ROLES.ADMINISTRACION,
+  APP_ROLES.GERENCIA_GENERAL,
+];
+
+/**
+ * Roles autorizados para revertir una comisión pendiente
+ * (`POST /comisiones/{comisionId}/reversion`, S17): Administración y
+ * Compliance.
+ */
+export const COMISIONES_ROLES_REVERSION: AppRole[] = [
+  APP_ROLES.ADMINISTRACION,
+  APP_ROLES.COMPLIANCE,
+];
+
+/**
+ * Roles con lectura de instancias de Saga BPM (`GET /sagas/{correlationId}`),
+ * según `docs/openapi.yaml`: el freelance ve las sagas de oportunidades de
+ * su cartera; Dirección Comercial, Administración y Gerencia General ven
+ * todas.
+ */
+export const SAGA_ROLES_LECTURA: AppRole[] = [
+  APP_ROLES.FREELANCE,
+  APP_ROLES.DIRECCION_COMERCIAL,
+  APP_ROLES.ADMINISTRACION,
+  APP_ROLES.GERENCIA_GENERAL,
+];

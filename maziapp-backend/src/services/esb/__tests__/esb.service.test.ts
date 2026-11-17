@@ -21,6 +21,10 @@ jest.mock("../../../repositories/auditoria/auditoria.repository", () => ({
   registrarEvento: jest.fn(async () => undefined),
 }));
 
+jest.mock("../../saga/saga.service", () => ({
+  procesarEventoEnSaga: jest.fn(async () => undefined),
+}));
+
 jest.mock(
   "../../../repositories/configuracion/configuracion.repository",
   () => ({
