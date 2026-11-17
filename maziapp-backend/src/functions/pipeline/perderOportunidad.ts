@@ -12,7 +12,10 @@ import { obtenerCorrelationId } from "../../utils/correlation";
 import { perderOportunidadSchema } from "../../validators/pipeline.validator";
 
 import * as pipelineService from "../../services/pipeline/pipeline.service";
-import { PipelineOportunidadCerradaError } from "../../services/pipeline/pipeline.service";
+import {
+  PipelineConflictoConcurrenciaError,
+  PipelineOportunidadCerradaError,
+} from "../../services/pipeline/pipeline.service";
 
 /**
  * ❌ POST /api/pipeline/oportunidades/{oportunidadId}/perder — S06.
@@ -108,8 +111,11 @@ const perderOportunidadHandler = withAuth(
         jsonBody: actualizada,
       };
     } catch (error: any) {
-      if (error instanceof PipelineOportunidadCerradaError) {
-        context.warn("Pérdida rechazada: oportunidad ya cerrada", {
+      if (
+        error instanceof PipelineOportunidadCerradaError ||
+        error instanceof PipelineConflictoConcurrenciaError
+      ) {
+        context.warn("Pérdida rechazada: oportunidad ya cerrada o modificada", {
           oid: user?.oid,
         });
 

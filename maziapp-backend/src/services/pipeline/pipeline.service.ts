@@ -1,4 +1,6 @@
 import * as repository from "../../repositories/pipeline/pipeline.repository";
+import { Oportunidad } from "../../repositories/pipeline/pipeline.repository";
+import { conAuditoriaDeRechazo } from "../auditoria/auditoria.service";
 import * as contactoService from "../contactos/contacto.service";
 import { APP_ROLES } from "../../config/roles";
 import { AuthenticatedUser } from "../../types/authenticated-user";
@@ -55,6 +57,23 @@ export class PipelineCierreNoHabilitadoError extends Error {
     super(message);
     this.name = "PipelineCierreNoHabilitadoError";
   }
+}
+
+/**
+ * Violación del estándar de concurrencia detectada por el repositorio
+ * (`UPDATE` condicional con `rowsAffected = 0`). Se reexporta para que
+ * los handlers dependan solo del servicio.
+ */
+export { PipelineConflictoConcurrenciaError } from "../../repositories/pipeline/pipeline.repository";
+
+/** Reglas de negocio que impiden la operación (409): se auditan como RECHAZO. */
+function esRechazoPipeline(error: unknown): boolean {
+  return (
+    error instanceof PipelineOportunidadCerradaError ||
+    error instanceof PipelineEtapaNoSecuencialError ||
+    error instanceof PipelineCierreNoHabilitadoError ||
+    error instanceof repository.PipelineConflictoConcurrenciaError
+  );
 }
 
 /**
@@ -232,6 +251,24 @@ export async function avanzarEtapa(
     return null;
   }
 
+  return conAuditoriaDeRechazo(
+    {
+      servicioCodigo: "S06",
+      operacion: "AvanzarEtapa",
+      entidad: "Oportunidad",
+      entidadId: oportunidad.oportunidadId,
+    },
+    esRechazoPipeline,
+    () => avanzarEtapaValidada(oportunidad, input, user, correlationId),
+  );
+}
+
+async function avanzarEtapaValidada(
+  oportunidad: Oportunidad,
+  input: AvanzarEtapaInput,
+  user: AuthenticatedUser,
+  correlationId: string | null,
+) {
   if (oportunidad.estado !== "ACTIVA") {
     throw new PipelineOportunidadCerradaError(
       "La oportunidad ya está cerrada y no admite cambios de etapa",
@@ -314,16 +351,27 @@ export async function marcarPerdida(
     return null;
   }
 
-  if (oportunidad.estado !== "ACTIVA") {
-    throw new PipelineOportunidadCerradaError(
-      "La oportunidad ya está cerrada y no admite cambios de estado",
-    );
-  }
+  return conAuditoriaDeRechazo(
+    {
+      servicioCodigo: "S06",
+      operacion: "PerderOportunidad",
+      entidad: "Oportunidad",
+      entidadId: oportunidad.oportunidadId,
+    },
+    esRechazoPipeline,
+    async () => {
+      if (oportunidad.estado !== "ACTIVA") {
+        throw new PipelineOportunidadCerradaError(
+          "La oportunidad ya está cerrada y no admite cambios de estado",
+        );
+      }
 
-  return repository.marcarPerdida(oportunidad.oportunidadId, input.motivo, {
-    usuarioId: user.oid,
-    usuarioNombre: user?.name || "",
-  });
+      return repository.marcarPerdida(oportunidad.oportunidadId, input.motivo, {
+        usuarioId: user.oid,
+        usuarioNombre: user?.name || "",
+      });
+    },
+  );
 }
 
 export async function obtenerHistorial(

@@ -1,5 +1,6 @@
 import * as repository from "../../repositories/kyc/kyc.repository";
 import * as configuracion from "../../repositories/configuracion/configuracion.repository";
+import { conAuditoriaDeRechazo } from "../auditoria/auditoria.service";
 import { APP_ROLES } from "../../config/roles";
 import { AuthenticatedUser } from "../../types/authenticated-user";
 import {
@@ -69,6 +70,17 @@ export class KycAccionReservadaError extends Error {
     super(message);
     this.name = "KycAccionReservadaError";
   }
+}
+
+/** Reglas de negocio y permisos que impiden la operación: se auditan como RECHAZO. */
+function esRechazoKyc(error: unknown): boolean {
+  return (
+    error instanceof KycAccionReservadaError ||
+    error instanceof KycOportunidadNoActivaError ||
+    error instanceof KycEstadoNoPermitidoError ||
+    error instanceof KycDictamenIncompletoError ||
+    error instanceof repository.KycExpedienteDuplicadoError
+  );
 }
 
 const CLAVE_SLA_KYC = "KYC_SLA_DIAS";
@@ -235,7 +247,7 @@ export async function listarExpedientes(
   };
 }
 
-export async function crearExpediente(
+async function crearExpedienteSinAuditoria(
   input: CrearExpedienteInput,
   user: AuthenticatedUser,
 ) {
@@ -303,7 +315,7 @@ export async function obtenerExpediente(
 // Documentos del checklist
 // ---------------------------------------------------------------------
 
-export async function registrarRecepcion(
+async function registrarRecepcionSinAuditoria(
   kycExpedienteId: string | number,
   input: RegistrarRecepcionInput,
   user: AuthenticatedUser,
@@ -361,7 +373,7 @@ export async function registrarRecepcion(
   );
 }
 
-export async function revisarDocumento(
+async function revisarDocumentoSinAuditoria(
   kycExpedienteId: string | number,
   kycDocumentoId: string | number,
   input: RevisarDocumentoInput,
@@ -435,7 +447,7 @@ export async function revisarDocumento(
 // Dictamen (exclusivo de compliance)
 // ---------------------------------------------------------------------
 
-export async function dictaminar(
+async function dictaminarSinAuditoria(
   kycExpedienteId: string | number,
   input: DictamenInput,
   user: AuthenticatedUser,
@@ -493,6 +505,79 @@ export async function dictaminar(
   return aRespuesta(
     { ...dictaminado, documentos },
     calcularSla(dictaminado, await umbralSla()),
+  );
+}
+
+// ---------------------------------------------------------------------
+// Operaciones públicas: cada una audita su RECHAZO (el ÉXITO se anexa
+// dentro de la transacción del repositorio).
+// ---------------------------------------------------------------------
+
+export function crearExpediente(
+  input: CrearExpedienteInput,
+  user: AuthenticatedUser,
+) {
+  return conAuditoriaDeRechazo(
+    {
+      servicioCodigo: "S12",
+      operacion: "CrearExpediente",
+      entidad: "Oportunidad",
+      entidadId: input.oportunidadId,
+    },
+    esRechazoKyc,
+    () => crearExpedienteSinAuditoria(input, user),
+  );
+}
+
+export function registrarRecepcion(
+  kycExpedienteId: string | number,
+  input: RegistrarRecepcionInput,
+  user: AuthenticatedUser,
+) {
+  return conAuditoriaDeRechazo(
+    {
+      servicioCodigo: "S12",
+      operacion: "RegistrarDocumento",
+      entidad: "KycExpediente",
+      entidadId: kycExpedienteId,
+    },
+    esRechazoKyc,
+    () => registrarRecepcionSinAuditoria(kycExpedienteId, input, user),
+  );
+}
+
+export function revisarDocumento(
+  kycExpedienteId: string | number,
+  kycDocumentoId: string | number,
+  input: RevisarDocumentoInput,
+  user: AuthenticatedUser,
+) {
+  return conAuditoriaDeRechazo(
+    {
+      servicioCodigo: "S12",
+      operacion: "RevisarDocumento",
+      entidad: "KycExpediente",
+      entidadId: kycExpedienteId,
+    },
+    esRechazoKyc,
+    () => revisarDocumentoSinAuditoria(kycExpedienteId, kycDocumentoId, input, user),
+  );
+}
+
+export function dictaminar(
+  kycExpedienteId: string | number,
+  input: DictamenInput,
+  user: AuthenticatedUser,
+) {
+  return conAuditoriaDeRechazo(
+    {
+      servicioCodigo: "S12",
+      operacion: "DictaminarExpediente",
+      entidad: "KycExpediente",
+      entidadId: kycExpedienteId,
+    },
+    esRechazoKyc,
+    () => dictaminarSinAuditoria(kycExpedienteId, input, user),
   );
 }
 

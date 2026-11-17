@@ -1,4 +1,6 @@
 import { getPool, sql } from "../../config/sql";
+import { registrarEvento } from "../auditoria/auditoria.repository";
+import { publicarEvento } from "../esb/outbox.repository";
 
 /**
  * Acceso a datos del módulo KYC (S12/S13).
@@ -211,6 +213,72 @@ const SELECT_EXPEDIENTE = `
 
 function filasAfectadas(result: { rowsAffected?: number[] }): number {
   return Number(result.rowsAffected?.[0] ?? 0);
+}
+
+/**
+ * Publica en el outbox, dentro de la transacción de negocio, que el
+ * expediente cambió de estado. La clave (expediente, estado nuevo) es
+ * única por hecho: un expediente entra a cada estado a lo sumo una vez
+ * (PENDIENTE → EN_PROCESO → dictamen final, sin retroceso).
+ */
+async function publicarCambioEstadoKyc(
+  transaction: { request(): sql.Request },
+  cambio: {
+    expedienteId: number;
+    oportunidadId: number;
+    estadoAnterior: string | null;
+    estadoNuevo: string;
+  },
+): Promise<void> {
+  await publicarEvento(transaction, {
+    tipoEvento: "KycEstadoCambiado",
+    agregado: "KycExpediente",
+    agregadoId: cambio.expedienteId,
+    idempotencyKey: `KycEstadoCambiado:${cambio.expedienteId}:${cambio.estadoNuevo}`,
+    payload: {
+      expedienteId: cambio.expedienteId,
+      oportunidadId: cambio.oportunidadId,
+      estadoAnterior: cambio.estadoAnterior,
+      estadoNuevo: cambio.estadoNuevo,
+    },
+  });
+}
+
+/**
+ * La primera recepción o revisión mueve el expediente de PENDIENTE a
+ * EN_PROCESO. `OUTPUT` devuelve la oportunidad solo si la fila cambió
+ * de verdad: si el expediente ya estaba EN_PROCESO no se publica nada.
+ */
+async function marcarExpedienteEnProceso(
+  transaction: { request(): sql.Request },
+  expedienteId: number,
+  usuarioId: string,
+  usuarioNombre: string,
+): Promise<void> {
+  const result = await transaction
+    .request()
+    .input("kycExpedienteId", sql.Int, expedienteId)
+    .input("usuarioId", sql.UniqueIdentifier, usuarioId)
+    .input("usuarioNombre", sql.NVarChar(200), usuarioNombre)
+    .query(`
+      UPDATE dbo.KycExpedientes
+      SET Estado = N'EN_PROCESO',
+          ActualizadoFechaUtc = SYSUTCDATETIME(),
+          ActualizadoId = @usuarioId,
+          ActualizadoNombre = @usuarioNombre
+      OUTPUT inserted.OportunidadId AS OportunidadId
+      WHERE KycExpedienteId = @kycExpedienteId
+        AND Estado = N'PENDIENTE'
+    `);
+
+  if (filasAfectadas(result) === 1) {
+    await publicarCambioEstadoKyc(transaction, {
+      expedienteId,
+      oportunidadId: result.recordset?.[0]?.OportunidadId ?? 0,
+      estadoAnterior: "PENDIENTE",
+      estadoNuevo: "EN_PROCESO",
+    });
+  }
 }
 
 function esViolacionDeUnicidad(error: any): boolean {
@@ -480,6 +548,26 @@ export async function saveExpediente(
 
     const persistido = exigirExpediente(readResult.recordset[0]);
 
+    await registrarEvento(transaction, {
+      servicioCodigo: "S12",
+      operacion: "CrearExpediente",
+      entidad: "KycExpediente",
+      entidadId: kycExpedienteId,
+      resultado: "EXITO",
+      valorNuevo: {
+        oportunidadId: persistido.oportunidadId,
+        contactoId: persistido.contactoId,
+        estado: persistido.estado,
+      },
+    });
+
+    await publicarCambioEstadoKyc(transaction, {
+      expedienteId: persistido.kycExpedienteId,
+      oportunidadId: persistido.oportunidadId,
+      estadoAnterior: null,
+      estadoNuevo: persistido.estado,
+    });
+
     await transaction.commit();
 
     return persistido;
@@ -537,20 +625,25 @@ export async function registrarRecepcion(
       return false;
     }
 
-    await transaction
-      .request()
-      .input("kycExpedienteId", sql.Int, input.expedienteId)
-      .input("usuarioId", sql.UniqueIdentifier, input.usuarioId)
-      .input("usuarioNombre", sql.NVarChar(200), input.usuarioNombre)
-      .query(`
-        UPDATE dbo.KycExpedientes
-        SET Estado = N'EN_PROCESO',
-            ActualizadoFechaUtc = SYSUTCDATETIME(),
-            ActualizadoId = @usuarioId,
-            ActualizadoNombre = @usuarioNombre
-        WHERE KycExpedienteId = @kycExpedienteId
-          AND Estado = N'PENDIENTE'
-      `);
+    await marcarExpedienteEnProceso(
+      transaction,
+      input.expedienteId,
+      input.usuarioId,
+      input.usuarioNombre,
+    );
+
+    await registrarEvento(transaction, {
+      servicioCodigo: "S12",
+      operacion: "RegistrarDocumento",
+      entidad: "KycExpediente",
+      entidadId: input.expedienteId,
+      resultado: "EXITO",
+      valorNuevo: { estado: "RECIBIDO" },
+      detalle: {
+        kycDocumentoId: input.kycDocumentoId,
+        archivoReferencia: input.archivoReferencia,
+      },
+    });
 
     await transaction.commit();
 
@@ -626,20 +719,25 @@ export async function revisarDocumento(
       return false;
     }
 
-    await transaction
-      .request()
-      .input("kycExpedienteId", sql.Int, input.expedienteId)
-      .input("usuarioId", sql.UniqueIdentifier, input.usuarioId)
-      .input("usuarioNombre", sql.NVarChar(200), input.usuarioNombre)
-      .query(`
-        UPDATE dbo.KycExpedientes
-        SET Estado = N'EN_PROCESO',
-            ActualizadoFechaUtc = SYSUTCDATETIME(),
-            ActualizadoId = @usuarioId,
-            ActualizadoNombre = @usuarioNombre
-        WHERE KycExpedienteId = @kycExpedienteId
-          AND Estado = N'PENDIENTE'
-      `);
+    await marcarExpedienteEnProceso(
+      transaction,
+      input.expedienteId,
+      input.usuarioId,
+      input.usuarioNombre,
+    );
+
+    await registrarEvento(transaction, {
+      servicioCodigo: "S12",
+      operacion: "RevisarDocumento",
+      entidad: "KycExpediente",
+      entidadId: input.expedienteId,
+      resultado: "EXITO",
+      valorNuevo: { estado: input.estado },
+      detalle: {
+        kycDocumentoId: input.kycDocumentoId,
+        observacion: input.observacion,
+      },
+    });
 
     await transaction.commit();
 
@@ -708,6 +806,7 @@ export async function dictaminarExpediente(
             ActualizadoFechaUtc = SYSUTCDATETIME(),
             ActualizadoId = @usuarioId,
             ActualizadoNombre = @usuarioNombre
+        OUTPUT deleted.Estado AS EstadoAnterior
         WHERE KycExpedienteId = @kycExpedienteId
           AND Estado IN (N'PENDIENTE', N'EN_PROCESO')
       `);
@@ -725,6 +824,27 @@ export async function dictaminarExpediente(
       );
 
     const persistido = exigirExpediente(readResult.recordset[0]);
+
+    const estadoAnterior: string | null =
+      updateResult.recordset?.[0]?.EstadoAnterior ?? null;
+
+    await registrarEvento(transaction, {
+      servicioCodigo: "S12",
+      operacion: "DictaminarExpediente",
+      entidad: "KycExpediente",
+      entidadId: input.expedienteId,
+      resultado: "EXITO",
+      valorAnterior: { estado: estadoAnterior },
+      valorNuevo: { estado: persistido.estado },
+      detalle: input.observacion ? { observacion: input.observacion } : undefined,
+    });
+
+    await publicarCambioEstadoKyc(transaction, {
+      expedienteId: persistido.kycExpedienteId,
+      oportunidadId: persistido.oportunidadId,
+      estadoAnterior,
+      estadoNuevo: persistido.estado,
+    });
 
     await transaction.commit();
 

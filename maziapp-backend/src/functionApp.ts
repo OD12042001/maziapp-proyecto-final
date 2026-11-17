@@ -50,3 +50,15 @@ import "./functions/kyc/revisarDocumentoKyc";
 import "./functions/kyc/dictaminarExpedienteKyc";
 import "./functions/kyc/getSlaKyc";
 import "./functions/kyc/kycCorsPreflight";
+
+// S40 Auditoría
+import "./functions/auditoria/getEventosAuditoria";
+import "./functions/auditoria/getEventoAuditoria";
+import "./functions/auditoria/auditoriaCorsPreflight";
+
+// ESB lógico
+import "./functions/esb/getOutbox";
+import "./functions/esb/getOutboxFallidos";
+import "./functions/esb/getOutboxEvento";
+import "./functions/esb/procesarOutbox";
+import "./functions/esb/esbCorsPreflight";

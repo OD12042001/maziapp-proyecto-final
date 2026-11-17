@@ -90,7 +90,12 @@ export function buildCorsHeaders(req: HttpRequest): Record<string, string> {
   if (origin && allowed.includes(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
     headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS";
-    headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
+    // S40: el frontend envía `X-Correlation-Id` y, en comandos con efectos
+    // irreversibles, `Idempotency-Key`; sin esto el preflight los bloquea.
+    headers["Access-Control-Allow-Headers"] =
+      "Authorization, Content-Type, X-Correlation-Id, Idempotency-Key";
+    // Permite que el navegador lea el id de correlación de la respuesta.
+    headers["Access-Control-Expose-Headers"] = "X-Correlation-Id";
   }
 
   return headers;

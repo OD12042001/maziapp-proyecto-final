@@ -7,6 +7,7 @@ import {
 import { validateToken } from "../utils/validateToken";
 import { AuthenticatedUser } from "../types/authenticated-user";
 import { ENV } from "../config/env";
+import { establecerUsuarioEnContexto } from "../utils/requestContext";
 
 /**
  * Envuelve un handler con autenticación (JWT de Microsoft Entra ID) y
@@ -84,6 +85,14 @@ export function withAuth(
           roles: decoded.roles || [],
         };
       }
+
+      // S40: la auditoría necesita saber QUIÉN actuó sin que cada
+      // servicio reciba el usuario por parámetro.
+      establecerUsuarioEnContexto({
+        oid: user.oid,
+        name: user.name,
+        roles: user.roles || [],
+      });
 
       const normalizedRoles = (user.roles || []).map((r: string) =>
         r.toLowerCase(),

@@ -1,4 +1,6 @@
 import { getPool, sql } from "../../config/sql";
+import { registrarEvento } from "../auditoria/auditoria.repository";
+import { publicarEvento } from "../esb/outbox.repository";
 
 /**
  * Acceso a datos del módulo Pipeline (S06).
@@ -81,6 +83,23 @@ export interface CambioEtapa {
   fechaResultado: Date | null;
 }
 
+/**
+ * Un cambio de estado/etapa se evaluó sobre una lectura previa que otra
+ * sesión invalidó: el `UPDATE` condicional no afectó ninguna fila. El
+ * servicio lo traduce a 409. Es el estándar de concurrencia aprobado
+ * (`UPDATE` condicional + `rowsAffected = 1`), el mismo de KYC.
+ */
+export class PipelineConflictoConcurrenciaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PipelineConflictoConcurrenciaError";
+  }
+}
+
+function filasAfectadas(result: { rowsAffected?: number[] }): number {
+  return Number(result.rowsAffected?.[0] ?? 0);
+}
+
 // ---------------------------------------------------------------------
 // Mapeo de filas a dominio
 // ---------------------------------------------------------------------
@@ -154,6 +173,37 @@ function exigirOportunidad(row: any): Oportunidad {
   }
 
   return toOportunidad(row);
+}
+
+/**
+ * Anexa a la bitácora y al outbox, DENTRO de la transacción de negocio,
+ * el hecho "la oportunidad entró en esta etapa". La clave de idempotencia
+ * es (oportunidad, etapa destino): el embudo es secuencial, así que una
+ * oportunidad entra a cada etapa a lo sumo una vez.
+ */
+async function publicarEtapaCambiada(
+  transaction: { request(): sql.Request },
+  oportunidad: Oportunidad,
+  etapaOrigenId: number | null,
+  correlationId: string | null,
+): Promise<void> {
+  await publicarEvento(transaction, {
+    tipoEvento: "EtapaCambiada",
+    agregado: "Oportunidad",
+    agregadoId: oportunidad.oportunidadId,
+    idempotencyKey: `EtapaCambiada:${oportunidad.oportunidadId}:${oportunidad.etapa.etapaId}`,
+    correlationId,
+    payload: {
+      oportunidadId: oportunidad.oportunidadId,
+      contactoId: oportunidad.contactoId,
+      responsableId: oportunidad.responsableId,
+      etapaOrigenId,
+      etapaDestinoId: oportunidad.etapa.etapaId,
+      etapaDestinoCodigo: oportunidad.etapa.codigo,
+      permiteCierre: oportunidad.etapa.permiteCierre,
+      estado: oportunidad.estado,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -407,6 +457,23 @@ export async function saveOportunidad(
 
     const persistida = exigirOportunidad(readResult.recordset[0]);
 
+    await registrarEvento(transaction, {
+      servicioCodigo: "S06",
+      operacion: "CrearOportunidad",
+      entidad: "Oportunidad",
+      entidadId: oportunidadId,
+      resultado: "EXITO",
+      valorNuevo: {
+        contactoId: persistida.contactoId,
+        etapaCodigo: persistida.etapa.codigo,
+        estado: persistida.estado,
+        montoEstimado: persistida.montoEstimado,
+        monedaCodigo: persistida.monedaCodigo,
+      },
+    });
+
+    await publicarEtapaCambiada(transaction, persistida, null, audit.correlationId);
+
     await transaction.commit();
 
     return persistida;
@@ -433,9 +500,14 @@ export async function actualizarEtapa(
   await transaction.begin();
 
   try {
-    await transaction
+    // Estándar de concurrencia: la lectura que validó el avance (etapa
+    // origen y estado ACTIVA) viaja en el WHERE. Si otra sesión ya movió
+    // la oportunidad, no se afecta ninguna fila y NO se escribe un
+    // segundo hito idéntico en el historial.
+    const updateResult = await transaction
       .request()
       .input("oportunidadId", sql.Int, oportunidadId)
+      .input("etapaOrigenId", sql.Int, etapaOrigenId)
       .input("etapaDestinoId", sql.Int, etapaDestinoId)
       .input("estado", sql.NVarChar(20), cambio.estado)
       .input("fechaResultado", sql.DateTime2, cambio.fechaResultado)
@@ -451,7 +523,15 @@ export async function actualizarEtapa(
             ActualizadoId = @usuarioId,
             ActualizadoNombre = @usuarioNombre
         WHERE OportunidadId = @oportunidadId
+          AND EtapaId = @etapaOrigenId
+          AND Estado = N'ACTIVA'
       `);
+
+    if (filasAfectadas(updateResult) !== 1) {
+      throw new PipelineConflictoConcurrenciaError(
+        "La oportunidad cambió de etapa o de estado mientras se procesaba el avance; reintente",
+      );
+    }
 
     await transaction
       .request()
@@ -478,6 +558,28 @@ export async function actualizarEtapa(
 
     const persistida = exigirOportunidad(readResult.recordset[0]);
 
+    await registrarEvento(transaction, {
+      servicioCodigo: "S06",
+      operacion: "AvanzarEtapa",
+      entidad: "Oportunidad",
+      entidadId: oportunidadId,
+      resultado: "EXITO",
+      valorAnterior: { etapaId: etapaOrigenId, estado: "ACTIVA" },
+      valorNuevo: {
+        etapaId: persistida.etapa.etapaId,
+        etapaCodigo: persistida.etapa.codigo,
+        estado: persistida.estado,
+      },
+      detalle: cambio.observacion ? { observacion: cambio.observacion } : undefined,
+    });
+
+    await publicarEtapaCambiada(
+      transaction,
+      persistida,
+      etapaOrigenId,
+      cambio.correlationId,
+    );
+
     await transaction.commit();
 
     return persistida;
@@ -503,7 +605,9 @@ export async function marcarPerdida(
   await transaction.begin();
 
   try {
-    await transaction
+    // Condicional por estado: dos "perder" simultáneos, o un "perder"
+    // contra un avance al cierre, no pueden pisarse.
+    const updateResult = await transaction
       .request()
       .input("oportunidadId", sql.Int, oportunidadId)
       .input("motivo", sql.NVarChar(300), motivo)
@@ -518,7 +622,14 @@ export async function marcarPerdida(
             ActualizadoId = @usuarioId,
             ActualizadoNombre = @usuarioNombre
         WHERE OportunidadId = @oportunidadId
+          AND Estado = N'ACTIVA'
       `);
+
+    if (filasAfectadas(updateResult) !== 1) {
+      throw new PipelineConflictoConcurrenciaError(
+        "La oportunidad cambió de estado mientras se procesaba la operación; reintente",
+      );
+    }
 
     const readResult = await transaction
       .request()
@@ -526,6 +637,16 @@ export async function marcarPerdida(
       .query(`${SELECT_VIEW} WHERE OportunidadId = @oportunidadId`);
 
     const persistida = exigirOportunidad(readResult.recordset[0]);
+
+    await registrarEvento(transaction, {
+      servicioCodigo: "S06",
+      operacion: "PerderOportunidad",
+      entidad: "Oportunidad",
+      entidadId: oportunidadId,
+      resultado: "EXITO",
+      valorAnterior: { estado: "ACTIVA" },
+      valorNuevo: { estado: persistida.estado, motivo: persistida.motivoPerdida },
+    });
 
     await transaction.commit();
 

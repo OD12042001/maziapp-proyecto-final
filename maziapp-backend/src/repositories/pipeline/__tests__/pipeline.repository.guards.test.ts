@@ -21,7 +21,11 @@ jest.mock("../../../config/sql", () => {
 
       return {
         recordset: state.results.length > 0 ? state.results.shift() : [],
-        rowsAffected: [1],
+        rowsAffected: [
+          state.rowsAffected && state.rowsAffected.length > 0
+            ? state.rowsAffected.shift()
+            : 1,
+        ],
       };
     },
   });
@@ -56,7 +60,12 @@ jest.mock("../../../config/sql", () => {
 });
 
 import * as sqlConfig from "../../../config/sql";
-import { findOportunidadById, actualizarEtapa, marcarPerdida } from "../pipeline.repository";
+import {
+  findOportunidadById,
+  actualizarEtapa,
+  marcarPerdida,
+  PipelineConflictoConcurrenciaError,
+} from "../pipeline.repository";
 
 const state = (sqlConfig as any).__state;
 const GUID = "11111111-2222-3333-4444-555555555555";
@@ -94,6 +103,7 @@ beforeEach(() => {
   state.order.length = 0;
   state.queries.length = 0;
   state.results.length = 0;
+  state.rowsAffected = [];
 });
 
 describe("pipeline.repository -> findOportunidadById", () => {
@@ -150,14 +160,25 @@ describe("pipeline.repository -> atomicidad de las escrituras", () => {
       fechaResultado: null,
     });
 
-    expect(state.order).toEqual(["begin", "query", "query", "query", "commit"]);
+    expect(state.order).toEqual([
+      "begin",
+      "query",
+      "query",
+      "query",
+      "query",
+      "query",
+      "commit",
+    ]);
     expect(state.queries[2]).toMatch(/vw_OportunidadResumen/);
+    expect(state.queries[3]).toMatch(/INSERT INTO dbo\.AuditoriaEventos/);
+    expect(state.queries[4]).toMatch(/INSERT INTO dbo\.OutboxEventos/);
   });
 
   test("marcarPerdida no inserta hito de etapa y registra al usuario", async () => {
     state.results.push(
       [],
       [{ ...FILA_VISTA, Estado: "PERDIDA", MotivoPerdida: "Sin presupuesto" }],
+      [],
     );
 
     await marcarPerdida(7, "Sin presupuesto", {
@@ -165,8 +186,42 @@ describe("pipeline.repository -> atomicidad de las escrituras", () => {
       usuarioNombre: "Test",
     });
 
-    expect(state.queries.join(" ")).not.toMatch(/INSERT/i);
+    expect(state.queries.join(" ")).not.toMatch(/OportunidadEtapaHistorial/i);
     expect(state.queries[0]).toMatch(/ActualizadoId\s*=\s*@usuarioId/);
-    expect(state.order).toEqual(["begin", "query", "query", "commit"]);
+    expect(state.queries[2]).toMatch(/INSERT INTO dbo\.AuditoriaEventos/);
+    expect(state.order).toEqual(["begin", "query", "query", "query", "commit"]);
+  });
+
+  test("actualizarEtapa y marcarPerdida revierten y lanzan PipelineConflictoConcurrenciaError cuando rowsAffected = 0", async () => {
+    state.rowsAffected = [0];
+
+    await expect(
+      actualizarEtapa(7, 3, 2, {
+        usuarioId: GUID,
+        usuarioNombre: "Test",
+        observacion: null,
+        correlationId: "corr-race",
+        estado: "ACTIVA",
+        fechaResultado: null,
+      }),
+    ).rejects.toBeInstanceOf(PipelineConflictoConcurrenciaError);
+
+    expect(state.queries[0]).toMatch(/AND EtapaId = @etapaOrigenId/);
+    expect(state.queries[0]).toMatch(/AND Estado = N'ACTIVA'/);
+    expect(state.order).toEqual(["begin", "query", "rollback"]);
+
+    state.order.length = 0;
+    state.queries.length = 0;
+    state.rowsAffected = [0];
+
+    await expect(
+      marcarPerdida(7, "Sin presupuesto", {
+        usuarioId: GUID,
+        usuarioNombre: "Test",
+      }),
+    ).rejects.toBeInstanceOf(PipelineConflictoConcurrenciaError);
+
+    expect(state.queries[0]).toMatch(/AND Estado = N'ACTIVA'/);
+    expect(state.order).toEqual(["begin", "query", "rollback"]);
   });
 });

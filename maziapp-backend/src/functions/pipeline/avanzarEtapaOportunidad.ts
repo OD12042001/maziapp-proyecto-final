@@ -14,6 +14,7 @@ import { avanzarEtapaSchema } from "../../validators/pipeline.validator";
 import * as pipelineService from "../../services/pipeline/pipeline.service";
 import {
   PipelineCierreNoHabilitadoError,
+  PipelineConflictoConcurrenciaError,
   PipelineEtapaNoSecuencialError,
   PipelineOportunidadCerradaError,
 } from "../../services/pipeline/pipeline.service";
@@ -119,7 +120,8 @@ const avanzarEtapaOportunidadHandler = withAuth(
       if (
         error instanceof PipelineOportunidadCerradaError ||
         error instanceof PipelineEtapaNoSecuencialError ||
-        error instanceof PipelineCierreNoHabilitadoError
+        error instanceof PipelineCierreNoHabilitadoError ||
+        error instanceof PipelineConflictoConcurrenciaError
       ) {
         context.warn("Avance de etapa rechazado", {
           oid: user?.oid,

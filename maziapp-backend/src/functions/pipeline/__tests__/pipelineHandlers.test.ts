@@ -34,6 +34,7 @@ jest.mock("../../../services/pipeline/pipeline.service", () => ({
   PipelineOportunidadCerradaError: class extends Error {},
   PipelineEtapaNoSecuencialError: class extends Error {},
   PipelineCierreNoHabilitadoError: class extends Error {},
+  PipelineConflictoConcurrenciaError: class extends Error {},
 }));
 
 const svc: any = require("../../../services/pipeline/pipeline.service");
@@ -227,6 +228,40 @@ describe("POST /pipeline/oportunidades/{id}/avanzar", () => {
 
     expect(res.status).toBe(409);
     expect(res.jsonBody.message).toMatch(/etapa inmediatamente siguiente/);
+  });
+
+  test("409 ante conflicto de concurrencia en avanzar o perder", async () => {
+    svc.avanzarEtapa.mockRejectedValue(
+      new svc.PipelineConflictoConcurrenciaError(
+        "La oportunidad cambió de etapa o de estado mientras se procesaba el avance; reintente",
+      ),
+    );
+
+    const resAvanzar: any = await avanzarEtapaOportunidad(
+      req({
+        method: "POST",
+        params: { oportunidadId: "7" },
+        body: { etapaDestinoCodigo: "CALIFICADO" },
+      }),
+      context,
+    );
+    expect(resAvanzar.status).toBe(409);
+
+    svc.marcarPerdida.mockRejectedValue(
+      new svc.PipelineConflictoConcurrenciaError(
+        "La oportunidad cambió de estado mientras se procesaba la operación; reintente",
+      ),
+    );
+
+    const resPerder: any = await perderOportunidad(
+      req({
+        method: "POST",
+        params: { oportunidadId: "7" },
+        body: { motivo: "Sin presupuesto" },
+      }),
+      context,
+    );
+    expect(resPerder.status).toBe(409);
   });
 
   test("400 ante un cuerpo inválido", async () => {

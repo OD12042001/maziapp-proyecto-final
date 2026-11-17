@@ -141,3 +141,26 @@ export const KYC_ROLES_ACCESO: AppRole[] = [
  * vuelve a comprobarlo (defensa en profundidad).
  */
 export const KYC_ROLES_DICTAMEN: AppRole[] = [APP_ROLES.COMPLIANCE];
+
+/**
+ * Roles con lectura de la bitácora de auditoría (S40), según
+ * `docs/openapi.yaml` (`x-required-roles`):
+ *
+ *   GET /auditoria/eventos
+ *   GET /auditoria/eventos/{eventoId}
+ *
+ * Solo lectura: la bitácora no tiene endpoint de escritura ni de
+ * modificación; la alimentan los servicios al cambiar el negocio.
+ */
+export const AUDITORIA_ROLES_LECTURA: AppRole[] = [
+  APP_ROLES.ADMINISTRACION,
+  APP_ROLES.GERENCIA_GENERAL,
+  APP_ROLES.COMPLIANCE,
+];
+
+/**
+ * Roles con acceso al ESB lógico (outbox, cola de fallidos y despacho),
+ * según `docs/openapi.yaml`: exclusivo de Administración. El despacho
+ * mueve mensajes entre servicios; no es una capacidad de negocio.
+ */
+export const ESB_ROLES_ADMIN: AppRole[] = [APP_ROLES.ADMINISTRACION];
