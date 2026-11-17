@@ -84,3 +84,30 @@ export type AppRole = (typeof APP_ROLES)[keyof typeof APP_ROLES];
  * explícitamente.
  */
 export const CONTACTOS_ROLES_PERMITIDOS: AppRole[] = [APP_ROLES.FREELANCE];
+
+/**
+ * Roles con lectura del módulo Pipeline (S06), según
+ * `docs/openapi.yaml` (`x-required-roles`):
+ *
+ *   GET  /pipeline/etapas
+ *   GET  /pipeline/oportunidades
+ *   GET  /pipeline/oportunidades/{id}
+ *   GET  /pipeline/oportunidades/{id}/historial
+ *
+ * El freelance ve solo su cartera; Dirección Comercial y Gerencia
+ * General ven todas las oportunidades. La restricción de cartera NO se
+ * resuelve aquí: `withAuth` solo decide quién entra, y
+ * `pipeline.service.ts` decide qué filas puede ver cada rol.
+ */
+export const PIPELINE_ROLES_LECTURA: AppRole[] = [
+  APP_ROLES.FREELANCE,
+  APP_ROLES.DIRECCION_COMERCIAL,
+  APP_ROLES.GERENCIA_GENERAL,
+];
+
+/**
+ * Roles con escritura en Pipeline (S06): alta, avance de etapa y paso a
+ * perdida. Exclusivo de Freelance — Dirección Comercial y Gerencia
+ * General tienen visibilidad, no operación.
+ */
+export const PIPELINE_ROLES_ESCRITURA: AppRole[] = [APP_ROLES.FREELANCE];

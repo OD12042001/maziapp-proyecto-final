@@ -26,3 +26,16 @@ import "./functions/contactos/getEmpresas";
 import "./functions/contactos/empresasCorsPreflight";
 import "./functions/ciiu/getCiiu";
 import "./functions/ciiu/ciiuCorsPreflight";
+
+// ---------------------------------------------------------------------
+// APF3 — corte vertical Etapa 3
+// ---------------------------------------------------------------------
+// S06 Pipeline
+import "./functions/pipeline/getEtapasPipeline";
+import "./functions/pipeline/getOportunidades";
+import "./functions/pipeline/createOportunidad";
+import "./functions/pipeline/getOportunidad";
+import "./functions/pipeline/avanzarEtapaOportunidad";
+import "./functions/pipeline/perderOportunidad";
+import "./functions/pipeline/getHistorialOportunidad";
+import "./functions/pipeline/pipelineCorsPreflight";
