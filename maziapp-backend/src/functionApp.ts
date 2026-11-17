@@ -39,3 +39,14 @@ import "./functions/pipeline/avanzarEtapaOportunidad";
 import "./functions/pipeline/perderOportunidad";
 import "./functions/pipeline/getHistorialOportunidad";
 import "./functions/pipeline/pipelineCorsPreflight";
+
+// S12/S13 KYC
+import "./functions/kyc/getDocumentosRequeridosKyc";
+import "./functions/kyc/getExpedientesKyc";
+import "./functions/kyc/createExpedienteKyc";
+import "./functions/kyc/getExpedienteKyc";
+import "./functions/kyc/registrarDocumentoKyc";
+import "./functions/kyc/revisarDocumentoKyc";
+import "./functions/kyc/dictaminarExpedienteKyc";
+import "./functions/kyc/getSlaKyc";
+import "./functions/kyc/kycCorsPreflight";

@@ -111,3 +111,33 @@ export const PIPELINE_ROLES_LECTURA: AppRole[] = [
  * General tienen visibilidad, no operación.
  */
 export const PIPELINE_ROLES_ESCRITURA: AppRole[] = [APP_ROLES.FREELANCE];
+
+/**
+ * Roles con acceso al módulo KYC (S12/S13), según
+ * `docs/openapi.yaml` (`x-required-roles`):
+ *
+ *   GET   /kyc/documentos-requeridos
+ *   GET   /kyc/expedientes
+ *   POST  /kyc/expedientes
+ *   GET   /kyc/expedientes/{id}
+ *   POST  /kyc/expedientes/{id}/documentos
+ *   PATCH /kyc/expedientes/{id}/documentos/{docId}
+ *   GET   /kyc/expedientes/{id}/sla
+ *
+ * El freelance carga documentos; compliance además valida. La
+ * validación documental y el dictamen NO se resuelven aquí:
+ * `kyc.service.ts` aplica ese límite, porque comparten ruta con la
+ * carga.
+ */
+export const KYC_ROLES_ACCESO: AppRole[] = [
+  APP_ROLES.FREELANCE,
+  APP_ROLES.COMPLIANCE,
+];
+
+/**
+ * Roles que pueden emitir el dictamen global del expediente. Exclusivo
+ * de Compliance, tal como lo confirma el usuario: el freelance carga,
+ * compliance dictamina. `withAuth` lo exige en el host y el servicio
+ * vuelve a comprobarlo (defensa en profundidad).
+ */
+export const KYC_ROLES_DICTAMEN: AppRole[] = [APP_ROLES.COMPLIANCE];
