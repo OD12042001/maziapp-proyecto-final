@@ -43,7 +43,6 @@ export class ModuleService {
       icon: 'validate',
       route: '/kyc',
       roles: ROLES_KYC,
-      proximamente: true,
     },
     {
       title: 'Contactos',
@@ -58,7 +57,6 @@ export class ModuleService {
       icon: 'money-bills',
       route: '/comisiones',
       roles: ROLES_COMISIONES,
-      proximamente: true,
     },
     {
       title: 'Reportería',

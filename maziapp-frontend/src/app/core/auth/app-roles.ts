@@ -54,8 +54,29 @@ export type AppRole = (typeof APP_ROLES)[keyof typeof APP_ROLES];
  * módulo real — ahora sí se usa).
  */
 export const ROLES_CONTACTOS: AppRole[] = [APP_ROLES.FREELANCE];
-export const ROLES_KYC: AppRole[] = [APP_ROLES.FREELANCE];
-export const ROLES_COMISIONES: AppRole[] = [APP_ROLES.FREELANCE, APP_ROLES.DIRECCION_COMERCIAL];
+/**
+ * APF3 (S12/S13): el freelance registra y carga documentos del
+ * checklist; Compliance valida documentos y es el ÚNICO rol que emite el
+ * dictamen final del expediente.
+ */
+export const ROLES_KYC: AppRole[] = [APP_ROLES.FREELANCE, APP_ROLES.COMPLIANCE];
+export const ROLES_KYC_DICTAMEN: AppRole[] = [APP_ROLES.COMPLIANCE];
+
+/**
+ * APF3 (S15/S16/S17): lectura de cierres y comisiones para Freelance
+ * (su cartera), Dirección Comercial, Administración y Gerencia General;
+ * reversión de comisiones reservada a Administración y Compliance.
+ */
+export const ROLES_COMISIONES: AppRole[] = [
+  APP_ROLES.FREELANCE,
+  APP_ROLES.DIRECCION_COMERCIAL,
+  APP_ROLES.ADMINISTRACION,
+  APP_ROLES.GERENCIA_GENERAL,
+];
+export const ROLES_COMISIONES_REVERSION: AppRole[] = [
+  APP_ROLES.ADMINISTRACION,
+  APP_ROLES.COMPLIANCE,
+];
 export const ROLES_CAPACITACIONES: AppRole[] = [APP_ROLES.FREELANCE];
 
 /**

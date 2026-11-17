@@ -90,14 +90,18 @@ export const routes: Routes = [
     canActivate: [authGuard, roleGuard(ROLES_KYC)],
     data: { title: 'KYC' },
     loadComponent: () =>
-      import('./layout/proximamente/proximamente.component').then((m) => m.ProximamenteComponent),
+      import('./features/kyc/pages/kyc-page.component').then(
+        (m) => m.KycPageComponent,
+      ),
   },
   {
     path: 'comisiones',
     canActivate: [authGuard, roleGuard(ROLES_COMISIONES)],
     data: { title: 'Comisiones' },
     loadComponent: () =>
-      import('./layout/proximamente/proximamente.component').then((m) => m.ProximamenteComponent),
+      import('./features/comisiones/pages/comisiones-page.component').then(
+        (m) => m.ComisionesPageComponent,
+      ),
   },
   {
     path: 'capacitaciones',
