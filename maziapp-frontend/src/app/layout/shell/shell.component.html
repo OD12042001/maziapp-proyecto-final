@@ -1,0 +1,17 @@
+<div class="shell">
+  <app-sidebar [isOpen]="isMenuOpen" (closed)="closeMenu()"></app-sidebar>
+
+  <div class="shell-main">
+    <app-topbar [isMenuOpen]="isMenuOpen" (menuToggle)="toggleMenu()"></app-topbar>
+
+    <div class="shell-content">
+      <div class="breadcrumb">
+        <span class="seccion">{{ seccion }}</span>
+        <span class="sep" *ngIf="pagina"> / </span>
+        <span class="pagina" *ngIf="pagina">{{ pagina }}</span>
+      </div>
+
+      <router-outlet></router-outlet>
+    </div>
+  </div>
+</div>

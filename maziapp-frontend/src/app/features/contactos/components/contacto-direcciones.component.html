@@ -1,0 +1,75 @@
+<div class="direcciones-container">
+  <div class="direcciones-header">
+    <h3>Direcciones</h3>
+
+    <button
+      fd-button
+      fdType="transparent"
+      class="icon-btn"
+      title="Agregar dirección"
+      (click)="agregarDireccion()"
+    >
+      <fd-icon glyph="add"></fd-icon>
+    </button>
+  </div>
+
+  <p class="form-error" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+  <fd-busy-indicator [loading]="loading">
+    <table fd-table class="is-cozy full-width-table">
+      <thead fd-table-header>
+        <tr fd-table-row>
+          <th fd-table-cell>Departamento</th>
+          <th fd-table-cell>Provincia</th>
+          <th fd-table-cell>Distrito</th>
+          <th fd-table-cell>Calle</th>
+          <th fd-table-cell>Número</th>
+          <th fd-table-cell>Departamento / Interior</th>
+          <th fd-table-cell></th>
+        </tr>
+      </thead>
+
+      <tbody fd-table-body>
+        <tr fd-table-row *ngFor="let d of direcciones">
+          <td fd-table-cell>{{ d.departamento }}</td>
+          <td fd-table-cell>{{ d.provincia }}</td>
+          <td fd-table-cell>{{ d.distrito }}</td>
+          <td fd-table-cell>{{ d.calle }}</td>
+          <td fd-table-cell>{{ d.numero }}</td>
+          <td fd-table-cell>{{ d.departamentoInterior }}</td>
+
+          <td
+            fd-table-cell
+            class="fd-table__cell--activable fd-table__cell--fit-content fd-table__cell--no-padding"
+          >
+            <div class="acciones-cell">
+              <button
+                fd-button
+                fdType="transparent"
+                class="icon-btn icon-btn--action"
+                title="Editar dirección"
+                (click)="editarDireccion(d)"
+              >
+                <fd-icon glyph="edit"></fd-icon>
+              </button>
+
+              <button
+                fd-button
+                fdType="transparent"
+                class="icon-btn icon-btn--action"
+                title="Desactivar dirección"
+                (click)="desactivarDireccion(d)"
+              >
+                <fd-icon glyph="delete"></fd-icon>
+              </button>
+            </div>
+          </td>
+        </tr>
+
+        <tr fd-table-row *ngIf="!loading && direcciones.length === 0">
+          <td fd-table-cell colspan="7">Este contacto aún no tiene direcciones registradas.</td>
+        </tr>
+      </tbody>
+    </table>
+  </fd-busy-indicator>
+</div>

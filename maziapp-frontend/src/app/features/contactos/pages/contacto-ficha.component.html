@@ -1,0 +1,303 @@
+<fd-dynamic-page>
+  <!-- HEADER -->
+  <fd-dynamic-page-header title="Ficha contacto"> </fd-dynamic-page-header>
+
+  <!-- TABS -->
+  <fd-tab-list class="fd-tabs-custom is-cozy">
+    <!-- CLIENTE -->
+    <fd-tab title="Cliente">
+      <div class="tab-content">
+        <form class="sap-form">
+          <div class="hgrid">
+            <!-- Tipo documento -->
+            <!-- 🔧 Fase 3.10: se agrega la opción RUC — antes solo listaba
+                 DNI/CE/PASAPORTE (válidos para NATURAL), así que un contacto
+                 JURIDICA (documento RUC) llegaba a la ficha con un valor
+                 seleccionado que no existía en la lista. -->
+            <div fd-form-item>
+              <label fd-form-label> Tipo de documento </label>
+
+              <!-- 🔒 Fase 3.15 / 7A: campo de identificación — de solo
+                   lectura en la ficha. No se puede modificar desde
+                   actualización de Cliente/Ubicación (el Backend
+                   tampoco lo acepta: contactoUpdate.validator.ts no
+                   declara esta clave). -->
+              <fd-select
+                [(ngModel)]="contacto.tipoDocumento"
+                name="tipoDocumento"
+                [disabled]="true"
+              >
+                <fd-option value="DNI">DNI</fd-option>
+
+                <fd-option value="CE">CE</fd-option>
+
+                <fd-option value="PASAPORTE">PASAPORTE</fd-option>
+
+                <fd-option value="RUC">RUC</fd-option>
+              </fd-select>
+            </div>
+
+            <!-- Documento -->
+            <div fd-form-item>
+              <label fd-form-label> Número de documento </label>
+
+              <!-- 🔒 Fase 3.15 / 7A: mismo criterio — solo lectura. -->
+              <input
+                fd-form-control
+                [(ngModel)]="contacto.numeroDocumento"
+                name="numeroDocumento"
+                [disabled]="true"
+              />
+            </div>
+
+            <!-- Nombres / Apellidos (solo NATURAL) — Razón social (solo
+                 JURIDICA): Fase 3.10. Antes se mostraban Nombres/Apellidos
+                 siempre, incluso para contactos JURIDICA (que no tienen esos
+                 campos) y nunca se mostraba `razonSocial`, con lo que el dato
+                 ingresado en el modal para una Empresa quedaba invisible en
+                 la ficha. Misma condición que ya usa
+                 contacto-modal.component.html. -->
+            <ng-container *ngIf="contacto.tipoContacto === 'JURIDICA'">
+              <!-- Razón social -->
+              <div fd-form-item>
+                <label fd-form-label> Razón social </label>
+
+                <input fd-form-control [(ngModel)]="contacto.razonSocial" name="razonSocial" />
+              </div>
+            </ng-container>
+
+            <ng-container *ngIf="contacto.tipoContacto !== 'JURIDICA'">
+              <!-- Nombres -->
+              <div fd-form-item>
+                <label fd-form-label> Nombres </label>
+
+                <input fd-form-control [(ngModel)]="contacto.nombres" name="nombres" />
+              </div>
+
+              <!-- Apellidos -->
+              <div fd-form-item>
+                <label fd-form-label> Apellidos </label>
+
+                <input fd-form-control [(ngModel)]="contacto.apellidos" name="apellidos" />
+              </div>
+            </ng-container>
+
+            <!-- 🔒 Fase 3.16 — VISIBILIDAD JURIDICA/RUC: los siguientes
+                 campos son exclusivos de Persona Natural. Antes se
+                 mostraban siempre, sin importar tipoContacto (Problema
+                 2 diagnosticado en la Fase 1). Mismo patrón *ngIf ya
+                 usado arriba para Nombres/Apellidos — sin arquitectura
+                 nueva. -->
+            <ng-container *ngIf="contacto.tipoContacto !== 'JURIDICA'">
+              <!-- Estado civil -->
+              <div fd-form-item>
+                <label fd-form-label> Estado civil </label>
+
+                <fd-select [(ngModel)]="contacto.estadoCivil" name="estadoCivil">
+                  <fd-option value="SOLTERO">Soltero</fd-option>
+
+                  <fd-option value="CASADO">Casado</fd-option>
+                </fd-select>
+              </div>
+
+              <!-- 🔧 Fase 3.16 — CORRECCIÓN "FECHA DE NACIMIENTO NO SE
+                   GUARDA": `[(ngModel)]` ahora se enlaza DIRECTAMENTE
+                   sobre `<fd-date-picker>` (implementa
+                   ControlValueAccessor) en vez de sobre un `<input>`
+                   proyectado que nunca era el control real — ver
+                   diagnóstico Fase 1 y los métodos
+                   `fechaNacimientoFdDate`/`stringAFdDate`/
+                   `fdDateAString` en el .ts, que adaptan entre el tipo
+                   `FdDate` que exige este componente y el `string`
+                   `YYYY-MM-DD` que usa el resto de la ficha. -->
+              <div fd-form-item>
+                <label fd-form-label> Fecha de nacimiento </label>
+
+                <fd-date-picker
+                  style="width: 100%"
+                  [(ngModel)]="fechaNacimientoFdDate"
+                  name="fechaNacimiento"
+                >
+                </fd-date-picker>
+              </div>
+
+              <div fd-form-item>
+                <label fd-form-label> Sexo </label>
+
+                <fd-form-group class="fd-form-group--inline">
+                  <div fd-form-item>
+                    <fd-radio-button
+                      value="MASCULINO"
+                      [(ngModel)]="contacto.sexo"
+                      name="sexo"
+                    >
+                      Masculino
+                    </fd-radio-button>
+                  </div>
+
+                  <div fd-form-item>
+                    <fd-radio-button
+                      value="FEMENINO"
+                      [(ngModel)]="contacto.sexo"
+                      name="sexo"
+                    >
+                      Femenino
+                    </fd-radio-button>
+                  </div>
+                </fd-form-group>
+              </div>
+
+              <!-- Nacionalidad -->
+              <div fd-form-item>
+                <label fd-form-label> Nacionalidad </label>
+
+                <input
+                  fd-form-control
+                  [(ngModel)]="contacto.nacionalidad"
+                  name="nacionalidad"
+                />
+              </div>
+
+              <div fd-form-item>
+                <label fd-form-label> País residencia </label>
+
+                <input
+                  fd-form-control
+                  [(ngModel)]="contacto.paisResidencia"
+                  name="paisResidencia"
+                />
+              </div>
+
+              <div fd-form-item class="pep-switch">
+                <label fd-form-label>
+                  ¿Es una persona calificada como PEP o tiene parentesco con una PEP?
+                </label>
+
+                <fd-switch [(ngModel)]="contacto.esPep" name="esPep"> </fd-switch>
+              </div>
+            </ng-container>
+          </div>
+
+          <!-- FOOTER -->
+          <div fd-bar class="fd-bar--footer">
+            <div fd-bar-right class="footer-actions">
+              <span
+                *ngIf="mensajeCliente"
+                [class.save-message--success]="mensajeCliente.tipo === 'exito'"
+                [class.save-message--error]="mensajeCliente.tipo === 'error'"
+                class="save-message"
+              >
+                {{ mensajeCliente.texto }}
+              </span>
+
+              <button
+                fd-button
+                fdType="emphasized"
+                [disabled]="guardandoCliente"
+                (click)="guardarCliente()"
+              >
+                {{ guardandoCliente ? 'Guardando...' : 'Guardar' }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </fd-tab>
+
+    <!-- UBICACION -->
+    <fd-tab title="Ubicación">
+      <div class="tab-content">
+        <form class="sap-form">
+          <div class="hgrid">
+            <!-- Celular -->
+            <div fd-form-item>
+              <label fd-form-label> Celular </label>
+
+              <fd-input-group addonText="+51" placement="before">
+                <input
+                  fd-input-group-input
+                  [(ngModel)]="contacto.celular"
+                  name="celular"
+                />
+              </fd-input-group>
+            </div>
+
+            <!-- Correo -->
+            <div fd-form-item>
+              <label fd-form-label> Correo </label>
+
+              <input fd-form-control [(ngModel)]="contacto.correo" name="correo" />
+            </div>
+          </div>
+
+          <!-- Fase Direcciones -- componente hijo dedicado, SIN *ngIf por
+               tipoContacto (aplica a NATURAL y JURIDICA). Se ubica antes
+               del footer "Guardar" para que ese botón quede al pie de
+               toda la pestaña (Celular/Correo + Direcciones), igual que
+               el diseño de referencia. -->
+          <app-contacto-direcciones [contactoId]="contactoId"></app-contacto-direcciones>
+
+          <!-- FOOTER — Fase 3.15 / 7A: esta pestaña no tenía botón de
+               guardado; se agrega con el mismo diseño que Cliente. No
+               se agrega ningún campo nuevo a esta pestaña (Fase 7A:
+               "no inventes campos") — solo se guardan Celular/Correo,
+               que ya existían en la ficha. -->
+          <div fd-bar class="fd-bar--footer">
+            <div fd-bar-right class="footer-actions">
+              <span
+                *ngIf="mensajeUbicacion"
+                [class.save-message--success]="mensajeUbicacion.tipo === 'exito'"
+                [class.save-message--error]="mensajeUbicacion.tipo === 'error'"
+                class="save-message"
+              >
+                {{ mensajeUbicacion.texto }}
+              </span>
+
+              <button
+                fd-button
+                fdType="emphasized"
+                [disabled]="guardandoUbicacion"
+                (click)="guardarUbicacion()"
+              >
+                {{ guardandoUbicacion ? 'Guardando...' : 'Guardar' }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </fd-tab>
+
+    <!-- ACTIVIDAD -->
+    <fd-tab title="Actividad">
+      <div class="tab-content">
+        <app-contacto-actividad [contactoId]="contactoId"></app-contacto-actividad>
+      </div>
+    </fd-tab>
+
+    <!-- PATRIMONIALES -->
+    <fd-tab title="Patrimoniales">
+      <div class="tab-container">PATRIMONIALES</div>
+    </fd-tab>
+
+    <!-- CUENTAS -->
+    <fd-tab title="Cuentas bancarias">
+      <div class="tab-container">CUENTAS BANCARIAS</div>
+    </fd-tab>
+
+    <!-- REPRESENTANTES -- Fase Representantes: solo visible para
+         JURIDICA (decision 7 de la autorizacion de implementacion).
+         Prospectos se elimina por completo (no debe existir para
+         ningun tipo de contacto) -- este bloque reemplaza esa pestana,
+         nunca se oculta con *ngIf sobre el propio Prospectos. -->
+    <fd-tab *ngIf="contacto.tipoContacto === 'JURIDICA'" title="Representantes">
+      <div class="tab-content">
+        <app-contacto-representantes [contactoId]="contactoId"></app-contacto-representantes>
+      </div>
+    </fd-tab>
+
+    <!-- NOTAS -->
+    <fd-tab title="Notas">
+      <div class="tab-container">NOTAS</div>
+    </fd-tab>
+  </fd-tab-list>
+</fd-dynamic-page>

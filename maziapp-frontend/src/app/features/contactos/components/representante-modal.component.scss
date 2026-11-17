@@ -1,0 +1,50 @@
+/* 🐛 Mismo fix documentado en direccion-modal.component.scss:
+   `<fd-busy-indicator>` (Fundamental-ngx) se renderiza por defecto como
+   `display:inline-block` (host binding interno
+   `fd-busy-indicator__container--inline`, activo salvo que se pase
+   `[block]="true"` -- ya agregado en el template). Se refuerza aquí con
+   CSS como respaldo por si el input `block` no alcanza a aplicarse
+   antes del primer render. */
+fd-busy-indicator,
+.fd-busy-indicator__container {
+  display: block;
+  width: 100%;
+}
+
+.sap-form {
+  display: block;
+  width: 100%;
+}
+
+[fd-form-item] {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+/* 🎨 Botones "Aceptar"/"Cancelar" centrados (mismo criterio que
+   direccion-modal.component.scss/contacto-modal.component.scss):
+   `<fd-dialog-footer>` envuelve su contenido en un `<div fd-bar-right>`
+   propio (clase interna `.fd-bar__right`, `justify-content:flex-end`
+   por defecto) que no vive en el template de este componente -- se usa
+   `::ng-deep` acotado con `:host` para que el override solo aplique
+   DENTRO de este modal. */
+:host ::ng-deep fd-dialog-footer .fd-bar__right {
+  justify-content: center;
+}
+
+.form-error {
+  color: #b00020;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+  white-space: pre-line;
+}
+
+// Mismo criterio que direccion-modal.component.scss/
+// contacto-modal.component.scss: error debajo de cada campo.
+.field-error {
+  color: #b00020;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}

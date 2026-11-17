@@ -1,0 +1,167 @@
+<div class="actividad-container">
+  <fd-busy-indicator [loading]="cargando" [block]="true">
+    <!-- Nada se muestra hasta que el Backend resolvió el TipoContacto
+         real (ver nota en contacto-actividad.component.ts) -- evita
+         mostrar por una fracción de segundo la rama equivocada. -->
+    <ng-container *ngIf="tipoContacto">
+      <form class="sap-form">
+        <!-- ================= PERSONA NATURAL ================= -->
+        <ng-container *ngIf="tipoContacto === 'NATURAL'">
+          <div class="hgrid">
+            <!-- Grado de instrucción -->
+            <div fd-form-item>
+              <label fd-form-label> Grado de instrucción * </label>
+
+              <fd-select [(ngModel)]="gradoInstruccion" name="gradoInstruccion" [disabled]="guardando">
+                <fd-option *ngFor="let g of gradosInstruccion" [value]="g">{{ g }}</fd-option>
+              </fd-select>
+
+              <p class="field-error" *ngIf="errores.gradoInstruccion">
+                ❌ {{ errores.gradoInstruccion }}
+              </p>
+            </div>
+
+            <!-- Profesión/Ocupación -->
+            <div fd-form-item>
+              <label fd-form-label> Profesión/Ocupación * </label>
+
+              <input
+                fd-form-control
+                [(ngModel)]="profesionOcupacion"
+                name="profesionOcupacion"
+                [disabled]="guardando"
+              />
+
+              <p class="field-error" *ngIf="errores.profesionOcupacion">
+                ❌ {{ errores.profesionOcupacion }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Trabajos dependientes -- recurso HTTP independiente (Etapa 5):
+               carga/agrega/edita/elimina directamente contra el Backend,
+               sin relación con el guardado de Actividad. -->
+          <div class="trabajos-header">
+            <h3>Trabajos dependientes</h3>
+
+            <button
+              fd-button
+              fdType="transparent"
+              class="icon-btn"
+              type="button"
+              title="Agregar trabajo dependiente"
+              [disabled]="guardando"
+              (click)="agregarTrabajo()"
+            >
+              <fd-icon glyph="add"></fd-icon>
+            </button>
+          </div>
+
+          <p class="form-error" *ngIf="errorTrabajos">{{ errorTrabajos }}</p>
+
+          <fd-busy-indicator [loading]="cargandoTrabajos" [block]="true">
+            <table fd-table class="is-cozy full-width-table">
+              <thead fd-table-header>
+                <tr fd-table-row>
+                  <th fd-table-cell>Empresa</th>
+                  <th fd-table-cell>Cargo</th>
+                  <th fd-table-cell>Desde</th>
+                  <th fd-table-cell>Hasta</th>
+                  <th fd-table-cell></th>
+                </tr>
+              </thead>
+
+              <tbody fd-table-body>
+                <tr fd-table-row *ngFor="let t of trabajos">
+                  <td fd-table-cell>{{ t.empresa.nombre }}</td>
+                  <td fd-table-cell>{{ t.cargo }}</td>
+                  <td fd-table-cell>{{ t.desde }}</td>
+                  <td fd-table-cell>{{ t.hasta || '—' }}</td>
+
+                  <td
+                    fd-table-cell
+                    class="fd-table__cell--activable fd-table__cell--fit-content fd-table__cell--no-padding"
+                  >
+                    <div class="acciones-cell">
+                      <button
+                        fd-button
+                        fdType="transparent"
+                        class="icon-btn icon-btn--action"
+                        type="button"
+                        title="Editar trabajo dependiente"
+                        (click)="editarTrabajo(t)"
+                      >
+                        <fd-icon glyph="edit"></fd-icon>
+                      </button>
+
+                      <button
+                        fd-button
+                        fdType="transparent"
+                        class="icon-btn icon-btn--action"
+                        type="button"
+                        title="Desactivar trabajo dependiente"
+                        (click)="desactivarTrabajo(t)"
+                      >
+                        <fd-icon glyph="delete"></fd-icon>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                <tr fd-table-row *ngIf="!cargandoTrabajos && trabajos.length === 0">
+                  <td fd-table-cell colspan="5">Este contacto aún no tiene trabajos dependientes registrados.</td>
+                </tr>
+              </tbody>
+            </table>
+          </fd-busy-indicator>
+        </ng-container>
+
+        <!-- ================= PERSONA JURIDICA ================= -->
+        <ng-container *ngIf="tipoContacto === 'JURIDICA'">
+          <div class="hgrid">
+            <!-- CIIU -->
+            <div fd-form-item>
+              <label fd-form-label> CIIU * </label>
+
+              <fd-combobox
+                name="ciiu"
+                placeholder="Busca por código o descripción..."
+                [isSearch]="true"
+                [dropdownValues]="ciiuEncontrados"
+                [filterFn]="filtroCiiu"
+                [displayFn]="formatearCiiu"
+                [communicateByObject]="true"
+                [(ngModel)]="ciiuSeleccionado"
+                (inputTextChange)="onCiiuInputChange($event)"
+                [disabled]="guardando"
+                [width]="'100%'"
+              ></fd-combobox>
+
+              <span *ngIf="buscandoCiiu" class="hint-text">Buscando CIIU...</span>
+
+              <p class="field-error" *ngIf="errores.ciiu">❌ {{ errores.ciiu }}</p>
+            </div>
+          </div>
+        </ng-container>
+
+        <!-- FOOTER -->
+        <div fd-bar class="fd-bar--footer">
+          <div fd-bar-right class="footer-actions">
+            <span
+              *ngIf="mensaje"
+              [class.save-message--success]="mensaje.tipo === 'exito'"
+              [class.save-message--error]="mensaje.tipo === 'error'"
+              class="save-message"
+            >
+              {{ mensaje.texto }}
+            </span>
+
+            <button fd-button fdType="emphasized" type="button" [disabled]="guardando" (click)="guardar()">
+              {{ guardando ? 'Guardando...' : 'Guardar' }}
+            </button>
+          </div>
+        </div>
+      </form>
+    </ng-container>
+  </fd-busy-indicator>
+</div>

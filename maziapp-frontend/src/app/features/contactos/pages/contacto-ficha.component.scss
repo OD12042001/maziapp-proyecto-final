@@ -1,0 +1,73 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+/* CONTENIDO */
+.tab-content,
+.tab-container {
+  padding: 1.5rem;
+}
+
+/* GRID */
+.hgrid {
+  display: grid;
+
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+
+  gap: 1rem;
+}
+
+/* FORM */
+.sap-form {
+  width: 100%;
+}
+
+/* ITEMS */
+[fd-form-item] {
+  margin-bottom: 1rem;
+}
+
+/* FOOTER */
+.fd-bar--footer {
+  margin-top: 2rem;
+  border-top: 1px solid var(--sapGroup_ContentBorderColor);
+}
+
+/* TABS */
+.fd-tabs-custom {
+  background: var(--sapBackgroundColor);
+}
+
+/* INPUTS */
+.fd-input,
+.fd-select {
+  width: 100%;
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .hgrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* MENSAJES DE GUARDADO — Fase 3.15 / 7A */
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.save-message {
+  font-size: 0.875rem;
+}
+
+.save-message--exito,
+.save-message--success {
+  color: var(--sapPositiveColor, #2b7d2b);
+}
+
+.save-message--error {
+  color: var(--sapNegativeColor, #b00);
+}

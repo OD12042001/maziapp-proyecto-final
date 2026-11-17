@@ -1,0 +1,117 @@
+<fd-dialog>
+  <!-- HEADER -->
+  <fd-dialog-header>
+    <h2 fd-title>Crear contacto</h2>
+  </fd-dialog-header>
+
+  <!-- BODY -->
+  <fd-dialog-body>
+    <form class="sap-form">
+      <!-- Tipo de contacto -->
+      <div fd-form-item>
+        <label fd-form-label> Tipo de contacto </label>
+
+        <fd-select
+          [(ngModel)]="model.tipoContacto"
+          name="tipoContacto"
+          (ngModelChange)="onTipoContactoChange()"
+        >
+          <fd-option *ngFor="let t of tiposContacto" [value]="t.value">
+            {{ t.label }}
+          </fd-option>
+        </fd-select>
+
+        <p class="field-error" *ngIf="errores.tipoContacto">❌ {{ errores.tipoContacto }}</p>
+      </div>
+
+      <!-- Tipo documento -->
+      <div fd-form-item>
+        <label fd-form-label> Tipo documento </label>
+
+        <fd-select [(ngModel)]="model.tipoDocumento" name="tipoDocumento">
+          <fd-option *ngFor="let item of tiposDocumentoDisponibles" [value]="item">
+            {{ item }}
+          </fd-option>
+        </fd-select>
+
+        <p class="field-error" *ngIf="errores.tipoDocumento">❌ {{ errores.tipoDocumento }}</p>
+      </div>
+
+      <!-- Número de documento -->
+      <div fd-form-item>
+        <label fd-form-label> Número de documento </label>
+
+        <input
+          fd-form-control
+          [(ngModel)]="model.numeroDocumento"
+          name="numeroDocumento"
+        />
+
+        <p class="field-error" *ngIf="errores.numeroDocumento">❌ {{ errores.numeroDocumento }}</p>
+      </div>
+
+      <!-- Celular -->
+      <div fd-form-item>
+        <label fd-form-label> Celular </label>
+
+        <fd-input-group addonText="+51" placement="before">
+          <input fd-input-group-input [(ngModel)]="model.celular" name="celular" />
+        </fd-input-group>
+
+        <p class="field-error" *ngIf="errores.celular">❌ {{ errores.celular }}</p>
+      </div>
+
+      <!-- Persona natural -->
+      <ng-container *ngIf="model.tipoContacto === 'NATURAL'">
+        <div fd-form-item>
+          <label fd-form-label> Nombres </label>
+
+          <input fd-form-control [(ngModel)]="model.nombres" name="nombres" />
+
+          <p class="field-error" *ngIf="errores.nombres">❌ {{ errores.nombres }}</p>
+        </div>
+
+        <div fd-form-item>
+          <label fd-form-label> Apellidos </label>
+
+          <input fd-form-control [(ngModel)]="model.apellidos" name="apellidos" />
+
+          <p class="field-error" *ngIf="errores.apellidos">❌ {{ errores.apellidos }}</p>
+        </div>
+      </ng-container>
+
+      <!-- Empresa / persona jurídica -->
+      <div fd-form-item *ngIf="model.tipoContacto === 'JURIDICA'">
+        <label fd-form-label> Razón social </label>
+
+        <input fd-form-control [(ngModel)]="model.razonSocial" name="razonSocial" />
+
+        <p class="field-error" *ngIf="errores.razonSocial">❌ {{ errores.razonSocial }}</p>
+      </div>
+
+      <p class="form-error" *ngIf="errorMessage">{{ errorMessage }}</p>
+    </form>
+  </fd-dialog-body>
+
+  <!-- FOOTER -->
+  <!-- 🐛 Fix (mismo criterio que direccion-modal.component.html): -->
+  <!-- `<fd-dialog-footer>` YA envuelve su contenido en su propio -->
+  <!-- `<div fd-bar barDesign="footer"><div fd-bar-right><ng-content>` -->
+  <!-- (ver template interno de DialogFooterComponent en -->
+  <!-- @fundamental-ngx/core/dialog). Envolver el contenido acá TAMBIÉN -->
+  <!-- en ese mismo patrón (como estaba antes) duplicaba la barra: la -->
+  <!-- exterior (automática) quedaba con su fondo visible donde la -->
+  <!-- interior (redundante, dimensionada a su propio contenido) no la -->
+  <!-- cubría -- la franja gris a la izquierda de Guardar/Cerrar. El uso -->
+  <!-- documentado por la propia librería es pasar los botones directo -->
+  <!-- como hijos de `<fd-dialog-footer>`, sin wrapper manual. -->
+  <fd-dialog-footer>
+    <button fd-button fdType="emphasized" [disabled]="loading" (click)="guardar()">
+      Guardar
+    </button>
+
+    <button fd-button fdType="transparent" [disabled]="loading" (click)="cerrar()">
+      Cerrar
+    </button>
+  </fd-dialog-footer>
+</fd-dialog>

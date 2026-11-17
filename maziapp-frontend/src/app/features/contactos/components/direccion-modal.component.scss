@@ -1,0 +1,71 @@
+/* 🐛 Corrección de espacios innecesarios en el modal "Dirección":
+   `<fd-busy-indicator>` (Fundamental-ngx) se renderiza por defecto como
+   `display:inline-block` (host binding interno
+   `fd-busy-indicator__container--inline`, activo salvo que se pase
+   `[block]="true"` -- ya agregado en el template). Ese `inline-block`
+   hacía que todo el formulario se dimensionara por "shrink-to-fit" en
+   vez de ocupar el ancho completo del modal, dejando el hueco en
+   blanco a la derecha visible en las capturas del usuario. Se refuerza
+   aquí con CSS (mismo criterio que `.fd-busy-indicator__container` en
+   contacto-direcciones.component.scss) como respaldo por si el input
+   `block` no alcanza a aplicarse antes del primer render.
+*/
+fd-busy-indicator,
+.fd-busy-indicator__container {
+  display: block;
+  width: 100%;
+}
+
+.sap-form {
+  display: block;
+  width: 100%;
+}
+
+[fd-form-item] {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+fd-combobox {
+  width: 100%;
+}
+
+/* 🎨 Botones "Aceptar"/"Cancelar" centrados en vez de alineados a la
+   derecha (pedido explícito del usuario). `<fd-dialog-footer>` envuelve
+   su contenido en un `<div fd-bar-right>` propio (clase interna
+   `.fd-bar__right`, con `justify-content:flex-end` por defecto en
+   fundamental-styles) -- ese div NO vive en el template de este
+   componente (lo genera `DialogFooterComponent` internamente), así que
+   no se puede alcanzar con una regla scoped normal; se usa `::ng-deep`
+   acotado con `:host` para que el override solo aplique DENTRO de este
+   modal (nunca a otros `fd-dialog-footer` del proyecto, como el de
+   contacto-modal.component.html, que debe seguir alineado a la
+   derecha sin cambios). */
+:host ::ng-deep fd-dialog-footer .fd-bar__right {
+  justify-content: center;
+}
+
+.hint-text {
+  display: block;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+}
+
+.form-error {
+  color: #b00020;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+  white-space: pre-line;
+}
+
+// Mismo criterio que contacto-modal.component.scss: error debajo de
+// cada campo (mismo color/tamaño que .form-error, pero pegado al
+// input en vez del margen del formulario).
+.field-error {
+  color: #b00020;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}

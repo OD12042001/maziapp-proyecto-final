@@ -1,0 +1,10 @@
+<div class="report-container">
+  <iframe
+    *ngIf="safeUrl"
+    [src]="safeUrl"
+    frameborder="0"
+    allowFullScreen="true">
+  </iframe>
+
+  <div *ngIf="error" class="report-error">No tienes acceso a este reporte.</div>
+</div>

@@ -1,0 +1,75 @@
+<div class="representantes-container">
+  <div class="representantes-header">
+    <h3>Representantes</h3>
+
+    <button
+      fd-button
+      fdType="transparent"
+      class="icon-btn"
+      title="Agregar representante"
+      (click)="agregarRepresentante()"
+    >
+      <fd-icon glyph="add"></fd-icon>
+    </button>
+  </div>
+
+  <p class="form-error" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+  <fd-busy-indicator [loading]="loading">
+    <table fd-table class="is-cozy full-width-table">
+      <thead fd-table-header>
+        <tr fd-table-row>
+          <th fd-table-cell>Documento</th>
+          <th fd-table-cell>Nombres</th>
+          <th fd-table-cell>Apellidos</th>
+          <th fd-table-cell>Cargo</th>
+          <th fd-table-cell>Celular</th>
+          <th fd-table-cell>Correo</th>
+          <th fd-table-cell>Acciones</th>
+        </tr>
+      </thead>
+
+      <tbody fd-table-body>
+        <tr fd-table-row *ngFor="let r of representantes">
+          <td fd-table-cell>{{ r.tipoDocumento }} {{ r.numeroDocumento }}</td>
+          <td fd-table-cell>{{ r.nombres }}</td>
+          <td fd-table-cell>{{ r.apellidos }}</td>
+          <td fd-table-cell>{{ r.cargo }}</td>
+          <td fd-table-cell>{{ r.celular }}</td>
+          <td fd-table-cell>{{ r.correo }}</td>
+
+          <td
+            fd-table-cell
+            class="fd-table__cell--activable fd-table__cell--fit-content fd-table__cell--no-padding"
+          >
+            <div class="acciones-cell">
+              <button
+                fd-button
+                fdType="transparent"
+                class="icon-btn icon-btn--action"
+                title="Editar representante"
+                (click)="editarRepresentante(r)"
+              >
+                <fd-icon glyph="edit"></fd-icon>
+              </button>
+
+              <button
+                fd-button
+                fdType="transparent"
+                class="icon-btn icon-btn--action"
+                title="Desactivar representante"
+                (click)="desactivarRepresentante(r)"
+              >
+                <fd-icon glyph="delete"></fd-icon>
+              </button>
+            </div>
+          </td>
+        </tr>
+
+        <tr fd-table-row *ngIf="!loading && representantes.length === 0">
+          <td fd-table-cell colspan="7">Esta empresa aún no tiene representantes registrados.</td>
+        </tr>
+      </tbody>
+    </table>
+  </fd-busy-indicator>
+</div>

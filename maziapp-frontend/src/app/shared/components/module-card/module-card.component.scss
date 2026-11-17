@@ -1,0 +1,70 @@
+/* CARD BASE */
+.module-card fd-card {
+ // width: 160px;
+  height: 160px;
+  border-radius: 5px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  transition: all 0.25s ease;
+}
+
+/* CONTENIDO CENTRADO */
+.module-card fd-card-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  gap: 10px;
+}
+
+/* TÍTULO */
+h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 3px;
+  text-align: center;
+}
+
+/* ICONO */
+.icon {
+  font-size: 28px;
+  color: #6b7280;
+}
+.icon fd-icon {
+  font-size: 30px;
+  padding: 10px
+}
+
+/* HOVER (CLAVE) */
+.module-card:hover fd-card {
+  background: white;
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* VARIANTE COMPACTA (selector de módulos de la topbar) */
+.module-card--compact fd-card {
+  height: 88px;
+  border-radius: 8px;
+}
+
+.module-card--compact fd-card-content {
+  gap: 6px;
+}
+
+.module-card--compact h3 {
+  font-size: 12px;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.module-card--compact .icon fd-icon {
+  font-size: 20px;
+  padding: 0;
+}
+
+.module-card--compact:hover fd-card {
+  transform: translateY(-2px);
+}

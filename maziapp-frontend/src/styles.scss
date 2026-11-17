@@ -1,0 +1,22 @@
+@use 'styles/brand';
+@use 'styles/components';
+@use 'styles/popover-arrow';
+
+// Reset mínimo: ni fundamental-styles.css ni el tema SAP Horizon (css_variables.css,
+// inyectado en runtime por @fundamental-ngx/core/theming) definen reglas para
+// html/body, por lo que el margin por defecto del navegador (8px en body) quedaba
+// visible como un borde blanco alrededor de toda la aplicación.
+html,
+body {
+  height: 100%;
+  min-height: 100vh;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+app-root {
+  display: block;
+  width: 100%;
+  min-height: 100vh;
+}

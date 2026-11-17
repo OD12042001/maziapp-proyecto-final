@@ -1,0 +1,56 @@
+// Fundamental Styles (fundamental-styles ^0.40.1) ya implementa la flecha de
+// fd-popover con la técnica nativa de doble triángulo superpuesto
+// (:before = triángulo de borde, :after = triángulo de relleno, ambos usando
+// los tokens --fdPopover_Arrow_Size / --fdPopover_Border_Color /
+// --fdPopover_Border_Width / --sapGroup_ContentBackground), pero en esta
+// versión del paquete el CSS compilado solo incluye las reglas para el caso
+// "popover ARRIBA del trigger, flecha abajo" (clases .fd-popover__body--above
+// / .fd-popover__body--arrow-bottom). El caso que necesitamos — popover
+// DEBAJO del trigger, flecha arriba (placement="bottom-end", el que ya usa
+// fd-popover para el menú de usuario) — genera correctamente las clases
+// .fd-popover__body--below / .fd-popover__body--arrow-top desde
+// @fundamental-ngx/core/popover, pero fundamental-styles.css no trae las
+// reglas correspondientes.
+//
+// Este bloque completa exactamente ese hueco, como espejo vertical de las
+// reglas --above / --arrow-bottom ya existentes, reutilizando los mismos
+// custom properties del tema (ningún color/tamaño queda hardcodeado) para
+// que el resultado sea indistinguible del resto de los popovers de
+// Fundamental NGX / SAP Horizon. No se toca ni se duplica ninguna regla
+// existente (--right, --arrow-x-end, etc. ya funcionan correctamente).
+
+.fd-popover__body--below {
+  top: var(--fdPopover_Offset);
+  bottom: auto;
+}
+
+.fd-popover__body--arrow-top {
+  top: calc(var(--fdPopover_Offset) + var(--fdPopover_Arrow_Size)) !important;
+}
+
+// Triángulo exterior (borde) — mismo color que el borde del popover.
+.fd-popover__body--arrow-top:after {
+  border-top: none;
+  border-left: var(--fdPopover_Arrow_Size) solid transparent;
+  border-right: var(--fdPopover_Arrow_Size) solid transparent;
+  border-bottom: var(--fdPopover_Arrow_Size) solid var(--fdPopover_Border_Color);
+  display: inline-block;
+  height: 0;
+  bottom: 100%;
+  width: 0;
+}
+
+// Triángulo interior (relleno) — un borde más chico y superpuesto sobre el
+// anterior, mismo fondo que el popover, para que el triángulo exterior quede
+// como un simple "borde" del triángulo interior (idéntico al efecto de
+// --arrow-bottom, solo invertido verticalmente).
+.fd-popover__body--arrow-top:before {
+  border-top: none;
+  border-left: calc(var(--fdPopover_Arrow_Size) - var(--fdPopover_Border_Width)) solid transparent;
+  border-right: calc(var(--fdPopover_Arrow_Size) - var(--fdPopover_Border_Width)) solid transparent;
+  border-bottom: calc(var(--fdPopover_Arrow_Size) - var(--fdPopover_Border_Width)) solid var(--sapGroup_ContentBackground);
+  display: inline-block;
+  height: 0;
+  bottom: 100%;
+  width: 0;
+}

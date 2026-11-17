@@ -1,0 +1,102 @@
+<div class="topbar">
+  <div class="topbar-left">
+    <!-- ☰ TOGGLE DEL DRAWER DE NAVEGACIÓN -->
+    <button
+      type="button"
+      fd-button
+      fdType="transparent"
+      class="icon-btn menu-toggle"
+      [attr.aria-expanded]="isMenuOpen"
+      aria-controls="mazi-nav-drawer"
+      [attr.aria-label]="isMenuOpen ? 'Cerrar menú de navegación' : 'Abrir menú de navegación'"
+      (click)="menuToggle.emit()"
+    >
+      <fd-icon glyph="menu2"></fd-icon>
+    </button>
+
+    <div class="brand">MAZI CAPITAL</div>
+  </div>
+
+  <div class="actions">
+    <!-- ➕ NUEVO CONTACTO -->
+    <button
+      *ngIf="showAddButton"
+      fd-button
+      fdType="transparent"
+      class="icon-btn"
+      title="Registrar contacto"
+      (click)="abrirNuevoContacto()"
+    >
+      <fd-icon glyph="add"></fd-icon>
+    </button>
+
+    <!-- 🔔 NOTIFICACIONES -->
+    <fd-popover placement="bottom-end">
+      <fd-popover-control>
+        <button fd-button fdType="transparent" class="icon-btn" title="Notificaciones">
+          <fd-icon glyph="bell"></fd-icon>
+        </button>
+      </fd-popover-control>
+
+      <fd-popover-body>
+        <div class="notif-empty">No tienes notificaciones</div>
+      </fd-popover-body>
+    </fd-popover>
+
+    <!-- 👤 USUARIO -->
+    <fd-popover placement="bottom-end" [noArrow]="false">
+      <fd-popover-control>
+        <button class="user-chip" type="button">
+          <fd-avatar
+            *ngIf="photoReady && userPhoto"
+            [image]="userPhoto"
+            size="xs"
+            class="fd-avatar--circle"
+          >
+          </fd-avatar>
+
+          <fd-avatar *ngIf="!photoReady || !userPhoto" size="xs" class="fd-avatar--circle">
+            {{ userInitials }}
+          </fd-avatar>
+
+          <div class="user-chip-text">
+            <div class="user-chip-name">{{ userName }}</div>
+            <div class="user-chip-role" *ngIf="userRole && userRole !== 'Sin rol'">
+              {{ userRole }}
+            </div>
+          </div>
+        </button>
+      </fd-popover-control>
+
+      <fd-popover-body>
+        <div class="user-menu">
+          <div class="user-header">
+            <fd-avatar
+              *ngIf="photoReady && userPhoto"
+              [image]="userPhoto"
+              size="s"
+              class="fd-avatar--circle"
+            >
+            </fd-avatar>
+
+            <fd-avatar *ngIf="!photoReady || !userPhoto" size="s" class="fd-avatar--circle">
+              {{ userInitials }}
+            </fd-avatar>
+
+            <div class="user-info">
+              <div class="user-name">{{ userName }}</div>
+              <div class="user-email" *ngIf="userEmail">{{ userEmail }}</div>
+              <div class="user-role" *ngIf="userRole && userRole !== 'Sin rol'">
+                {{ userRole }}
+              </div>
+            </div>
+          </div>
+
+          <hr />
+
+          <div class="user-item" (click)="logout()">Cerrar sesión</div>
+        </div>
+      </fd-popover-body>
+    </fd-popover>
+  </div>
+</div>

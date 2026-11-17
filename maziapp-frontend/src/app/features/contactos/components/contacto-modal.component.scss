@@ -1,0 +1,39 @@
+[fd-form-item] {
+  margin-bottom: 1rem;
+}
+
+/* 🎨 Botones "Guardar"/"Cerrar" centrados en vez de alineados a la
+   derecha (mismo pedido/criterio aplicado en direccion-modal.component.scss).
+   `<fd-dialog-footer>` envuelve su contenido en un `<div fd-bar-right>`
+   propio (clase interna `.fd-bar__right`, con `justify-content:flex-end`
+   por defecto en fundamental-styles) -- ese div NO vive en el template
+   de este componente (lo genera DialogFooterComponent internamente),
+   así que no se puede alcanzar con una regla scoped normal; se usa
+   `::ng-deep` acotado con `:host` para que el override solo aplique
+   DENTRO de este modal (nunca a otros `fd-dialog-footer` del proyecto). */
+:host ::ng-deep fd-dialog-footer .fd-bar__right {
+  justify-content: center;
+}
+
+.form-error {
+  color: #b00020;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+
+  // 🔧 Fase 3.17: el mensaje ahora puede incluir varias líneas (una
+  // por campo con error, con viñeta "• "), separadas por saltos de
+  // línea reales dentro del mismo string. `white-space: pre-line`
+  // hace que esos saltos se rendericen — sin cambiar la estructura del
+  // <p> existente ni el resto del diseño del modal.
+  white-space: pre-line;
+}
+
+// 🔧 Fase 3.18: error debajo de cada campo (mismo color/tamaño que
+// .form-error, pero pegado al input en vez del margen del formulario).
+.field-error {
+  color: #b00020;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}

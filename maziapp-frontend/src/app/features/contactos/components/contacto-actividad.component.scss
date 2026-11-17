@@ -1,0 +1,137 @@
+:host {
+  display: block;
+}
+
+.actividad-container {
+  display: block;
+  width: 100%;
+}
+
+.fd-busy-indicator__container {
+  width: 100%;
+}
+
+.sap-form {
+  width: 100%;
+}
+
+.hgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+[fd-form-item] {
+  margin-bottom: 1rem;
+}
+
+fd-combobox {
+  width: 100%;
+}
+
+.trabajos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.trabajos-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* Mismo criterio visual que contacto-representantes.component.scss
+   (duplicado localmente, autocontenido). */
+.trabajos-header .icon-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sapGroup_ContentBorderColor, #6a6d70);
+  border-radius: 6px;
+  padding: 0;
+}
+
+.full-width-table {
+  width: 100%;
+}
+
+/* Acciones por fila (Editar/Desactivar) -- mismo criterio (y misma
+   advertencia) que contacto-direcciones.component.scss::acciones-cell:
+   esta clase se aplica a un <div> INTERNO dentro del <td fd-table-cell>,
+   nunca al <td> directamente -- aplicar `display:flex` a un elemento
+   con `display:table-cell` (como lo fuerza `fd-table-cell`) rompe el
+   algoritmo de layout de tablas del navegador. */
+.acciones-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.icon-btn--action {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.hint-text {
+  display: block;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+}
+
+.field-error {
+  color: #b00020;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
+/* Etapa 5 -- mismo criterio que contacto-direcciones.component.scss:
+   error general de la sección de Trabajos Dependientes (agregar/
+   editar delega en el modal; este es para la baja, que ocurre en este
+   componente). Distinto de `.field-error`, que va pegado a un campo
+   puntual del formulario de Actividad. */
+.form-error {
+  color: #b00020;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+/* FOOTER -- mismo criterio que contacto-ficha.component.scss */
+.fd-bar--footer {
+  margin-top: 2rem;
+  border-top: 1px solid var(--sapGroup_ContentBorderColor);
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.save-message {
+  font-size: 0.875rem;
+}
+
+.save-message--success {
+  color: var(--sapPositiveColor, #2b7d2b);
+}
+
+.save-message--error {
+  color: var(--sapNegativeColor, #b00);
+}
+
+@media (max-width: 768px) {
+  .hgrid {
+    grid-template-columns: 1fr;
+  }
+}

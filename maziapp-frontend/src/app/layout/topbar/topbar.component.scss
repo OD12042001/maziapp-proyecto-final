@@ -1,0 +1,153 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--topbar-height, 56px);
+  padding: 0 20px;
+  border-bottom: 1px solid var(--gray-200, #e5e7eb);
+  background: #ffffff;
+  // Debe permanecer visible por encima del drawer (1050) y su overlay (1040).
+  position: relative;
+  z-index: 1060;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.menu-toggle {
+  flex: 0 0 auto;
+}
+
+.brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #0a2463;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--gray-200, #e5e7eb);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.icon-btn:hover {
+  background: var(--gray-100, #f3f4f6);
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.user-chip:hover {
+  background: var(--gray-100, #f3f4f6);
+}
+
+.user-chip-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+
+.user-chip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-600, #4b5563);
+}
+
+.user-chip-role {
+  font-size: 11px;
+  color: var(--primary, #ff7a00);
+}
+
+.notif-empty {
+  padding: 16px;
+  color: var(--gray-500, #6b7280);
+  font-size: 13px;
+  min-width: 180px;
+  text-align: center;
+}
+
+.user-menu {
+  padding: 12px;
+  min-width: 200px;
+}
+
+.user-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-name {
+  font-weight: 600;
+}
+
+.user-email {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.user-role {
+  color: var(--primary, #ff7a00);
+}
+
+.user-item {
+  cursor: pointer;
+  padding-top: 8px;
+}
+
+.user-item:hover {
+  color: var(--primary, #ff7a00);
+}
+
+// Mobile: se oculta el nombre/rol del usuario en el chip de la topbar — se
+// mantiene únicamente el avatar. Esto es solo presentación (CSS): el dato
+// (userName/userRole) sigue viniendo del token igual que en desktop, nada
+// del modelo ni de la autenticación se modifica. El breadcrumb ya no vive
+// acá (ver ShellComponent), así que no hace falta ocultarlo en la topbar.
+//
+// Este bloque va al FINAL del archivo (después de .user-chip y
+// .user-chip-text) a propósito: con especificidad igual, la regla que
+// aparece más abajo en el archivo gana la cascada. Si el media query queda
+// antes de esas reglas base, el navegador aplica la regla base (display:flex)
+// por venir después, y el ocultamiento en móvil no llega a verse.
+@media (max-width: 480px) {
+  .user-chip-text {
+    display: none;
+  }
+
+  .user-chip {
+    padding: 4px;
+  }
+}

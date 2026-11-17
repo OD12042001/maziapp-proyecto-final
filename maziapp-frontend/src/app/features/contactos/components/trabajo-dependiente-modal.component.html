@@ -1,0 +1,91 @@
+<fd-dialog>
+  <!-- HEADER -->
+  <fd-dialog-header>
+    <h2 fd-title>Trabajo dependiente</h2>
+  </fd-dialog-header>
+
+  <!-- BODY -->
+  <fd-dialog-body>
+    <fd-busy-indicator [loading]="guardando" [block]="true">
+      <form class="sap-form">
+        <!-- Empresa -- ÚNICO campo visible (con ícono de búsqueda);
+             internamente decide empresaContactoId/empresaNombreLibre al
+             Aceptar (ver trabajo-dependiente-modal.component.ts). -->
+        <div fd-form-item>
+          <label fd-form-label> Empresa </label>
+
+          <fd-combobox
+            name="empresa"
+            placeholder="Busca una empresa o escribe el nombre..."
+            [isSearch]="true"
+            [dropdownValues]="empresasEncontradas"
+            [filterFn]="filtroEmpresas"
+            [displayFn]="formatearEmpresa"
+            [(ngModel)]="model.empresaTexto"
+            (inputTextChange)="onEmpresaInputChange($event)"
+            (itemClicked)="onEmpresaSeleccionada($event)"
+            [disabled]="guardando"
+            [width]="'100%'"
+          ></fd-combobox>
+
+          <span *ngIf="buscandoEmpresas" class="hint-text">Buscando empresas...</span>
+
+          <p class="field-error" *ngIf="errores.empresa">❌ {{ errores.empresa }}</p>
+        </div>
+
+        <!-- Cargo -->
+        <div fd-form-item>
+          <label fd-form-label> Cargo </label>
+
+          <input
+            fd-form-control
+            [(ngModel)]="model.cargo"
+            name="cargo"
+            [disabled]="guardando"
+          />
+
+          <p class="field-error" *ngIf="errores.cargo">❌ {{ errores.cargo }}</p>
+        </div>
+
+        <!-- Desde -->
+        <div fd-form-item>
+          <label fd-form-label> Desde </label>
+
+          <fd-date-picker
+            [(ngModel)]="model.desde"
+            name="desde"
+            [disabled]="guardando"
+          ></fd-date-picker>
+
+          <p class="field-error" *ngIf="errores.desde">❌ {{ errores.desde }}</p>
+        </div>
+
+        <!-- Hasta -->
+        <div fd-form-item>
+          <label fd-form-label> Hasta </label>
+
+          <fd-date-picker
+            [(ngModel)]="model.hasta"
+            name="hasta"
+            [disabled]="guardando"
+          ></fd-date-picker>
+
+          <p class="field-error" *ngIf="errores.hasta">❌ {{ errores.hasta }}</p>
+        </div>
+
+        <p class="form-error" *ngIf="errorMessage">{{ errorMessage }}</p>
+      </form>
+    </fd-busy-indicator>
+  </fd-dialog-body>
+
+  <!-- FOOTER -->
+  <fd-dialog-footer>
+    <button fd-button fdType="emphasized" [disabled]="guardando" (click)="aceptar()">
+      {{ guardando ? 'Guardando...' : 'Aceptar' }}
+    </button>
+
+    <button fd-button fdType="transparent" [disabled]="guardando" (click)="cancelar()">
+      Cancelar
+    </button>
+  </fd-dialog-footer>
+</fd-dialog>

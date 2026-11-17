@@ -1,0 +1,36 @@
+# Dependencias
+node_modules/
+.npm/
+
+# Builds
+dist/
+build/
+out-tsc/
+.angular/
+
+# Configuracion local con secretos / credenciales
+maziapp-backend/local.settings.json
+*.env
+.env
+.env.*
+!.env.example
+
+# Datos locales de base de datos
+*.mdf
+*.ldf
+*.bak
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Logs y temporales
+*.log
+npm-debug.log*
+coverage/
+.nyc_output/
+tmp/

@@ -1,0 +1,27 @@
+<fd-dialog>
+  <!-- HEADER -->
+  <fd-dialog-header>
+    <h2 fd-title>{{ dialogRef.data.title || 'Confirmar' }}</h2>
+  </fd-dialog-header>
+
+  <!-- BODY -->
+  <fd-dialog-body>
+    <p class="confirm-message">{{ dialogRef.data.message }}</p>
+  </fd-dialog-body>
+
+  <!-- FOOTER -->
+  <!-- Mismo criterio ya documentado en direccion-modal.component.html /
+       representante-modal.component.html: los botones van directo
+       como hijos de <fd-dialog-footer>, sin envolverlos en un
+       <div fd-bar> manual (evita duplicar la barra interna que ya
+       agrega DialogFooterComponent). -->
+  <fd-dialog-footer>
+    <button fd-button fdType="emphasized" (click)="cancelar()">
+      {{ dialogRef.data.cancelText || 'Cancelar' }}
+    </button>
+
+    <button fd-button fdType="transparent" (click)="confirmar()">
+      {{ dialogRef.data.confirmText || 'Aceptar' }}
+    </button>
+  </fd-dialog-footer>
+</fd-dialog>

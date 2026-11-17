@@ -1,0 +1,109 @@
+<fd-dialog>
+  <!-- HEADER -->
+  <fd-dialog-header>
+    <h2 fd-title>Dirección</h2>
+  </fd-dialog-header>
+
+  <!-- BODY -->
+  <fd-dialog-body>
+    <fd-busy-indicator [loading]="guardando" [block]="true">
+      <form class="sap-form">
+        <!-- Distrito (autocompletado, consulta al Backend) -->
+        <div fd-form-item>
+          <label fd-form-label> Distrito </label>
+
+          <!-- 🐛 Fix: `fd-combobox` (Fundamental-ngx) NO se estira solo
+               con CSS -- internamente envuelve el control visible en un
+               `<fd-popover [style.width]="width && '100%'">`, que solo
+               aplica `width:100%` cuando el @Input `width` es truthy
+               (default: sin bindear -> undefined -> sin estilo alguno).
+               El `fd-combobox { width:100% }` del .scss solo estira el
+               elemento HOST (invisible, sin borde), no el popover con el
+               input real -- por eso el campo Distrito se veía más
+               angosto que Calle/Número/Departamento-Interior aun
+               después de corregir el `fd-busy-indicator`. `[width]="true"`
+               es la API que expone la propia librería para esto. -->
+          <fd-combobox
+            name="distrito"
+            placeholder="Busca un distrito..."
+            [dropdownValues]="distritosEncontrados"
+            [filterFn]="filtroDistritos"
+            [displayFn]="formatearDistrito"
+            [communicateByObject]="true"
+            [(ngModel)]="model.distritoSeleccionado"
+            (inputTextChange)="onDistritoInputChange($event)"
+            [disabled]="guardando"
+            [width]="'100%'"
+          ></fd-combobox>
+
+          <span *ngIf="buscandoDistritos" class="hint-text">Buscando distritos...</span>
+
+          <p class="field-error" *ngIf="errores.distrito">❌ {{ errores.distrito }}</p>
+        </div>
+
+        <!-- Calle -->
+        <div fd-form-item>
+          <label fd-form-label> Calle </label>
+
+          <input fd-form-control [(ngModel)]="model.calle" name="calle" [disabled]="guardando" />
+
+          <p class="field-error" *ngIf="errores.calle">❌ {{ errores.calle }}</p>
+        </div>
+
+        <!-- Número -->
+        <div fd-form-item>
+          <label fd-form-label> Número </label>
+
+          <input
+            fd-form-control
+            [(ngModel)]="model.numero"
+            name="numero"
+            [disabled]="guardando"
+          />
+
+          <p class="field-error" *ngIf="errores.numero">❌ {{ errores.numero }}</p>
+        </div>
+
+        <!-- N° Departamento/Interior -->
+        <div fd-form-item>
+          <label fd-form-label> N° Departamento/Interior </label>
+
+          <input
+            fd-form-control
+            [(ngModel)]="model.departamentoInterior"
+            name="departamentoInterior"
+            [disabled]="guardando"
+          />
+
+          <p class="field-error" *ngIf="errores.departamentoInterior">
+            ❌ {{ errores.departamentoInterior }}
+          </p>
+        </div>
+
+        <p class="form-error" *ngIf="errorMessage">{{ errorMessage }}</p>
+      </form>
+    </fd-busy-indicator>
+  </fd-dialog-body>
+
+  <!-- FOOTER -->
+  <!-- 🐛 Fix: `<fd-dialog-footer>` YA envuelve su contenido en su propio
+       `<div fd-bar barDesign="footer"><div fd-bar-right><ng-content>`
+       (ver template interno de DialogFooterComponent en
+       @fundamental-ngx/core/dialog). Envolver el contenido acá TAMBIÉN
+       en ese mismo patrón (como estaba antes) duplica la barra: la
+       exterior (automática) queda con su fondo visible donde la
+       interior (redundante, dimensionada a su propio contenido) no la
+       cubre -- esa era la franja gris a la izquierda de Aceptar/
+       Cancelar. El uso documentado por la propia librería es pasar los
+       botones directo como hijos de `<fd-dialog-footer>`, sin wrapper
+       manual -- ya alinea a la derecha por su `fd-bar-right` interno. -->
+  <fd-dialog-footer>
+    <button fd-button fdType="emphasized" [disabled]="guardando" (click)="guardar()">
+      {{ guardando ? 'Guardando...' : 'Aceptar' }}
+    </button>
+
+    <button fd-button fdType="transparent" [disabled]="guardando" (click)="cancelar()">
+      Cancelar
+    </button>
+  </fd-dialog-footer>
+</fd-dialog>

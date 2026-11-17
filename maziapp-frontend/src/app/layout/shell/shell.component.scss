@@ -1,0 +1,40 @@
+:host {
+  display: block;
+  height: 100vh;
+}
+
+.shell {
+  display: flex;
+  height: 100%;
+}
+
+.shell-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shell-content {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+// Breadcrumb de la página actual: vive en el área de contenido (no en la
+// topbar). Al estar en su propia línea, a diferencia de cuando compartía
+// espacio con ☰/marca/acciones en la barra superior, puede hacer wrap
+// libremente en pantallas angostas sin generar scroll horizontal ni
+// afectar en absoluto a la topbar (que ya no lo contiene).
+.breadcrumb {
+  padding: 16px 24px 0;
+  font-size: 14px;
+  color: var(--gray-500, #6b7280);
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.breadcrumb .pagina {
+  color: var(--gray-600, #4b5563);
+  font-weight: 600;
+}

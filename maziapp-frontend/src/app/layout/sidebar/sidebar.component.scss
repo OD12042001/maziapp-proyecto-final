@@ -1,0 +1,167 @@
+// El host no debe ocupar espacio propio en el flex layout de ShellComponent:
+// el drawer (.sidebar) y su overlay son position:fixed y ya no empujan el
+// contenido — .shell-main ocupa siempre el 100% del ancho disponible.
+:host {
+  display: contents;
+}
+
+.sidebar-overlay {
+  position: fixed;
+  top: var(--topbar-height, 56px);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 36, 99, 0.35);
+  z-index: 1040;
+}
+
+.sidebar {
+  position: fixed;
+  top: var(--topbar-height, 56px);
+  left: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  max-width: 90vw;
+  background: #0a2463;
+  color: #e5e9f5;
+  padding: 20px 14px;
+  box-sizing: border-box;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
+  z-index: 1050;
+  transform: translateX(-100%);
+  transition: transform var(--transition-normal, 0.25s ease);
+}
+
+.sidebar--open {
+  transform: translateX(0);
+}
+
+// Mobile (mismo breakpoint que ya usa el proyecto — ver también
+// topbar.component.scss): el drawer pasa a cubrir el 100% del viewport,
+// incluso por encima de la topbar (su propio header "MAZI CAPITAL" + ✕
+// la sustituye visualmente), en lugar de quedar angosto con una franja
+// del contenido/topbar visible a la derecha o arriba.
+@media (max-width: 480px) {
+  .sidebar-overlay {
+    top: 0;
+  }
+
+  .sidebar {
+    left: 0;
+    width: 100vw;
+    max-width: 100vw;
+
+    z-index: 1070; // por encima de la topbar (1060) para cubrirla por completo
+  }
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+}
+
+.sidebar-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(229, 233, 245, 0.85);
+  cursor: pointer;
+}
+
+.sidebar-close:hover,
+.sidebar-close:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-close:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
+
+.brand {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+  padding: 6px 10px 20px 10px;
+}
+
+.sidebar-header .brand {
+  padding: 6px 0;
+}
+
+.modules-section {
+  flex: 1;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(229, 233, 245, 0.55);
+  padding: 0 10px 8px;
+}
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: rgba(229, 233, 245, 0.85);
+  text-decoration: none;
+  font-size: 14px;
+  border: 1px solid transparent;
+  transition:
+    background var(--transition-fast, 0.15s ease),
+    border-color var(--transition-fast, 0.15s ease);
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-item.active {
+  background: rgba(255, 122, 0, 0.12);
+  border-color: var(--primary, #ff7a00);
+  color: #ffffff;
+}
+
+.nav-item:focus-visible,
+.config-item:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
+
+.config-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid rgba(229, 233, 245, 0.25);
+  color: rgba(229, 233, 245, 0.85);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.config-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}

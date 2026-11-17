@@ -1,0 +1,44 @@
+<!-- Overlay: solo visible con el drawer abierto; clic afuera cierra -->
+<div class="sidebar-overlay" *ngIf="isOpen" (click)="close()"></div>
+
+<aside
+  id="mazi-nav-drawer"
+  class="sidebar"
+  [class.sidebar--open]="isOpen"
+  [attr.aria-hidden]="!isOpen"
+>
+  <div class="sidebar-header">
+    <div class="brand">Módulos</div>
+
+    <button
+      type="button"
+      class="sidebar-close"
+      title="Cerrar menú"
+      aria-label="Cerrar menú de navegación"
+      (click)="close()"
+    >
+      <fd-icon glyph="decline"></fd-icon>
+    </button>
+  </div>
+
+  <div class="modules-section">
+    <nav class="nav-list">
+      <a
+        *ngFor="let m of modules"
+        class="nav-item"
+        [routerLink]="m.route"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: false }"
+        (click)="close()"
+      >
+        <fd-icon [glyph]="m.icon"></fd-icon>
+        <span>{{ m.title }}</span>
+      </a>
+    </nav>
+  </div>
+
+  <button class="config-item" type="button" (click)="irAConfiguracion()">
+    <fd-icon glyph="action-settings"></fd-icon>
+    <span>Configuración</span>
+  </button>
+</aside>

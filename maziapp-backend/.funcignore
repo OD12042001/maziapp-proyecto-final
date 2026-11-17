@@ -1,0 +1,8 @@
+src/
+.vscode/
+.github/
+.git/
+node_modules/
+local.settings.json
+*.ts
+tsconfig.json

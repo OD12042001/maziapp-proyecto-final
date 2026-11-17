@@ -1,0 +1,146 @@
+<fd-dialog>
+  <!-- HEADER -->
+  <fd-dialog-header>
+    <h2 fd-title>{{ esEdicion ? 'Editar representante' : 'Agregar representante' }}</h2>
+  </fd-dialog-header>
+
+  <!-- BODY -->
+  <!-- [block]="true": mismo fix aplicado en direccion-modal.component.html
+       -- `fd-busy-indicator` (Fundamental-ngx) se renderiza por defecto
+       como `display:inline-block`, lo que deja espacio en blanco a la
+       derecha del modal si no se fuerza a `block`. -->
+  <fd-dialog-body>
+    <fd-busy-indicator [loading]="guardando" [block]="true">
+      <form class="sap-form">
+        <!-- Tipo de documento (solo lectura al editar) -->
+        <div fd-form-item>
+          <label fd-form-label> Tipo de documento </label>
+
+          <fd-select
+            *ngIf="!esEdicion"
+            [(ngModel)]="model.tipoDocumento"
+            name="tipoDocumentoRepresentante"
+            [disabled]="guardando"
+          >
+            <fd-option *ngFor="let t of tiposDocumento" [value]="t">{{ t }}</fd-option>
+          </fd-select>
+
+          <input
+            *ngIf="esEdicion"
+            fd-form-control
+            [value]="model.tipoDocumento"
+            name="tipoDocumentoRepresentanteReadonly"
+            [disabled]="true"
+          />
+
+          <p class="field-error" *ngIf="errores.tipoDocumento">❌ {{ errores.tipoDocumento }}</p>
+        </div>
+
+        <!-- Número de documento (solo lectura al editar) -->
+        <div fd-form-item>
+          <label fd-form-label> Número de documento </label>
+
+          <input
+            fd-form-control
+            [(ngModel)]="model.numeroDocumento"
+            name="numeroDocumentoRepresentante"
+            [disabled]="guardando || esEdicion"
+          />
+
+          <p class="field-error" *ngIf="errores.numeroDocumento">
+            ❌ {{ errores.numeroDocumento }}
+          </p>
+        </div>
+
+        <!-- Nombres -->
+        <div fd-form-item>
+          <label fd-form-label> Nombres </label>
+
+          <input
+            fd-form-control
+            [(ngModel)]="model.nombres"
+            name="nombresRepresentante"
+            [disabled]="guardando"
+          />
+
+          <p class="field-error" *ngIf="errores.nombres">❌ {{ errores.nombres }}</p>
+        </div>
+
+        <!-- Apellidos -->
+        <div fd-form-item>
+          <label fd-form-label> Apellidos </label>
+
+          <input
+            fd-form-control
+            [(ngModel)]="model.apellidos"
+            name="apellidosRepresentante"
+            [disabled]="guardando"
+          />
+
+          <p class="field-error" *ngIf="errores.apellidos">❌ {{ errores.apellidos }}</p>
+        </div>
+
+        <!-- Cargo -->
+        <div fd-form-item>
+          <label fd-form-label> Cargo </label>
+
+          <input
+            fd-form-control
+            [(ngModel)]="model.cargo"
+            name="cargoRepresentante"
+            [disabled]="guardando"
+          />
+
+          <p class="field-error" *ngIf="errores.cargo">❌ {{ errores.cargo }}</p>
+        </div>
+
+        <!-- Celular -->
+        <div fd-form-item>
+          <label fd-form-label> Celular </label>
+
+          <input
+            fd-form-control
+            [(ngModel)]="model.celular"
+            name="celularRepresentante"
+            [disabled]="guardando"
+          />
+
+          <p class="field-error" *ngIf="errores.celular">❌ {{ errores.celular }}</p>
+        </div>
+
+        <!-- Correo -->
+        <div fd-form-item>
+          <label fd-form-label> Correo </label>
+
+          <input
+            fd-form-control
+            [(ngModel)]="model.correo"
+            name="correoRepresentante"
+            [disabled]="guardando"
+          />
+
+          <p class="field-error" *ngIf="errores.correo">❌ {{ errores.correo }}</p>
+        </div>
+
+        <p class="form-error" *ngIf="errorMessage">{{ errorMessage }}</p>
+      </form>
+    </fd-busy-indicator>
+  </fd-dialog-body>
+
+  <!-- FOOTER -->
+  <!-- Sin wrapper manual de `fd-bar` dentro de `<fd-dialog-footer>` --
+       mismo fix aplicado en direccion-modal.component.html/
+       contacto-modal.component.html: `<fd-dialog-footer>` ya envuelve
+       su contenido en su propio `fd-bar`/`fd-bar-right`; duplicarlo
+       aquí produce la franja gris ya corregida en esas otras dos
+       pantallas. -->
+  <fd-dialog-footer>
+    <button fd-button fdType="emphasized" [disabled]="guardando" (click)="guardar()">
+      {{ guardando ? 'Guardando...' : 'Aceptar' }}
+    </button>
+
+    <button fd-button fdType="transparent" [disabled]="guardando" (click)="cancelar()">
+      Cancelar
+    </button>
+  </fd-dialog-footer>
+</fd-dialog>

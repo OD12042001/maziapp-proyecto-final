@@ -1,0 +1,54 @@
+/* Mismo criterio de estilos que direccion-modal.component.scss --
+   duplicado localmente (autocontenido), no importado. */
+
+/* 🐛 Etapa 4 -- mismo fix que direccion-modal.component.scss:
+   `<fd-busy-indicator>` (Fundamental-ngx) se renderiza por defecto
+   como `display:inline-block`, lo que dimensiona el formulario por
+   "shrink-to-fit" en vez de ocupar el ancho completo del modal.
+   Reforzado aquí con CSS como respaldo por si `[block]="true"` (ya
+   agregado en el template) no alcanza a aplicarse antes del primer
+   render. */
+fd-busy-indicator,
+.fd-busy-indicator__container {
+  display: block;
+  width: 100%;
+}
+
+.sap-form {
+  display: block;
+  width: 100%;
+}
+
+[fd-form-item] {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+fd-combobox {
+  width: 100%;
+}
+
+.hint-text {
+  display: block;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+}
+
+.field-error {
+  color: #b00020;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
+/* Etapa 4 -- mismo criterio que direccion-modal.component.scss: error
+   general de guardado al pie del formulario (distinto de
+   .field-error, que va pegado a un campo puntual). */
+.form-error {
+  color: #b00020;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+  white-space: pre-line;
+}
