@@ -23,7 +23,7 @@ $sqlcmd = '/opt/mssql-tools18/bin/sqlcmd'
 function Invoke-SqlFile([string]$LocalPath, [string]$RemotePath) {
     Write-Host "  -> $LocalPath" -ForegroundColor Cyan
     docker cp $LocalPath "${Container}:${RemotePath}" | Out-Null
-    docker exec $Container $sqlcmd -S localhost -U sa -P $SaPassword -C -b -f 65001 -i $RemotePath
+    docker exec $Container $sqlcmd -S localhost -U sa -P $SaPassword -C -I -b -f 65001 -i $RemotePath
     if ($LASTEXITCODE -ne 0) {
         throw "sqlcmd fallo al ejecutar $LocalPath (exit $LASTEXITCODE)"
     }
@@ -43,10 +43,15 @@ if ($Reset) {
 }
 
 Write-Host 'Levantando SQL Server 2022...' -ForegroundColor Green
-# `2>&1 | Out-Null`: docker escribe el progreso en stderr y con
-# $ErrorActionPreference='Stop' PowerShell lo trataria como excepcion.
+# docker escribe el progreso en stderr. Con $ErrorActionPreference='Stop',
+# PowerShell 5.1 convierte esa salida en excepcion aunque el comando tenga
+# exito; por eso se relaja el error action solo durante la llamada.
+$errorActionPreferencePrevio = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 docker compose up -d 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'docker compose up fallo' }
+$exitCompose = $LASTEXITCODE
+$ErrorActionPreference = $errorActionPreferencePrevio
+if ($exitCompose -ne 0) { throw 'docker compose up fallo' }
 
 Write-Host 'Esperando disponibilidad (puede tardar ~30s en el primer arranque)...' -ForegroundColor Green
 $ready = $false
@@ -77,13 +82,25 @@ if ($tableCount -ge 14) {
 Write-Host 'Aplicando datos de desarrollo...' -ForegroundColor Green
 Invoke-SqlFile (Join-Path $root 'database/init/02-seed-dev.sql') '/tmp/02-seed-dev.sql'
 
+# APF3: esquema y catalogos nuevos. Idempotentes: se aplican siempre,
+# incluso si la base ya tenia las 14 tablas originales.
+Write-Host 'Aplicando esquema APF3...' -ForegroundColor Green
+Invoke-SqlFile (Join-Path $root 'database/init/03-apf3-schema.sql') '/tmp/03-apf3-schema.sql'
+
+Write-Host 'Aplicando catalogos y parametros APF3...' -ForegroundColor Green
+Invoke-SqlFile (Join-Path $root 'database/init/04-apf3-seed.sql') '/tmp/04-apf3-seed.sql'
+
 $finalTables = Invoke-SqlScalar 'SELECT COUNT(*) FROM sys.tables;' $Database
 $contactos = Invoke-SqlScalar 'SELECT COUNT(*) FROM dbo.Contactos;' $Database
 $reportes = Invoke-SqlScalar 'SELECT COUNT(*) FROM dbo.Reportes;' $Database
+$etapas = Invoke-SqlScalar 'SELECT COUNT(*) FROM dbo.PipelineEtapas;' $Database
+$parametros = Invoke-SqlScalar 'SELECT COUNT(*) FROM dbo.ConfiguracionParametros;' $Database
 
 Write-Host ''
-Write-Host "  Tablas:    $finalTables" -ForegroundColor Green
-Write-Host "  Contactos: $contactos" -ForegroundColor Green
-Write-Host "  Reportes:  $reportes" -ForegroundColor Green
+Write-Host "  Tablas:        $finalTables" -ForegroundColor Green
+Write-Host "  Contactos:     $contactos" -ForegroundColor Green
+Write-Host "  Reportes:      $reportes" -ForegroundColor Green
+Write-Host "  Etapas:        $etapas" -ForegroundColor Green
+Write-Host "  Parametros:    $parametros" -ForegroundColor Green
 Write-Host ''
 Write-Host 'Listo. Cadena local: Server=localhost,14333;Database=mazi_sqri_qa;User Id=sa' -ForegroundColor Green

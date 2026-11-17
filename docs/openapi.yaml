@@ -1,0 +1,3498 @@
+openapi: 3.1.0
+info:
+  title: Mazi Flow API
+  version: 1.0.0
+  summary: Contratos del CRM Mazi Flow para el corte vertical de APF3
+  description: |
+    Contrato HTTP del CRM de Capacity Perú S.A.C. Cubre la superficie ya
+    implementada (contactos, representantes, direcciones, trabajos
+    dependientes, ubigeo, CIIU y reportería) y los servicios nuevos del
+    corte vertical de la ETAPA 3:
+
+    - **S06** gestión de etapas del pipeline.
+    - **S12/S13** documentación KYC y control de tiempos.
+    - **S15** cierre de inversión.
+    - **S16/S17** cálculo y reversión de comisiones.
+    - **S40** auditoría de solo anexado.
+    - **ESB lógico** outbox, cola de fallidos e idempotencia.
+    - **Saga BPM** estado de la orquestación por oportunidad.
+
+    Reglas transversales:
+
+    - Todas las rutas llevan el prefijo `/api` (valor por defecto de Azure
+      Functions; `host.json` no redefine `routePrefix`). Los `servers`
+      incluyen el prefijo.
+    - Formato JSON en `camelCase`; fechas ISO 8601 en UTC.
+    - Los identificadores `int` viajan como número. Los `bigint`
+      (auditoría y outbox) viajan como string para no perder precisión en
+      JavaScript.
+    - El error implementado hoy es `{ "message": string }`, con
+      `{ "errors": { "fieldErrors", "formErrors" } }` en la validación de
+      Zod. La forma `application/problem+json` de RFC 9457 **no** está
+      implementada; el contrato documenta lo que el código devuelve.
+    - Los listados existentes devuelven un array sin envoltorio. Los
+      listados nuevos devuelven `{ items, page, pageSize, total }`.
+    - Los endpoints nuevos aceptan y devuelven `X-Correlation-Id`. Si no
+      llega, el backend genera uno y lo publica en la respuesta y en la
+      auditoría.
+    - Las operaciones con efectos irreversibles exigen
+      `Idempotency-Key`. Una repetición con el mismo cuerpo devuelve la
+      respuesta original; con cuerpo distinto responde `422`.
+
+    Autenticación: JWT de Microsoft Entra ID validado en el backend. En
+    local, `AUTH_DEV_BYPASS` sustituye la identidad solo con tres
+    candados simultáneos (`NODE_ENV` distinto de producción, bypass
+    activo y ausencia de `WEBSITE_INSTANCE_ID`). La autorización por rol
+    se sigue aplicando en modo bypass.
+
+    Estado: contrato de la Fase 1. Los endpoints nuevos describen el
+    comportamiento acordado para su implementación; todavía no existen en
+    el runtime.
+  contact:
+    name: Equipo Mazi Flow
+  license:
+    name: Uso académico
+    identifier: LicenseRef-Academic
+
+servers:
+  - url: https://{functionAppHost}/api
+    description: Azure Functions desplegado
+    variables:
+      functionAppHost:
+        default: maziapp-api.azurewebsites.net
+        description: Host de la Function App (sin esquema ni ruta)
+  - url: http://localhost:7071/api
+    description: Azure Functions Core Tools en local
+
+tags:
+  - name: Contactos
+    description: S01 — gestión de contactos y su actividad
+  - name: Representantes
+    description: Representantes legales de contactos jurídicos
+  - name: Direcciones
+    description: Direcciones de contacto con ubigeo
+  - name: TrabajosDependientes
+    description: Historial laboral de contactos naturales
+  - name: Ubigeo
+    description: Catálogo de distritos
+  - name: CIIU
+    description: Catálogo de actividad económica
+  - name: Reportes
+    description: URLs de inserción de Power BI autorizadas por rol
+  - name: Pipeline
+    description: S06 — oportunidades y etapas del pipeline comercial
+  - name: KYC
+    description: S12/S13 — checklist documental y control de tiempos
+  - name: Cierres
+    description: S15 — cierre formal de una inversión
+  - name: Comisiones
+    description: S16/S17 — cálculo y reversión de comisiones
+  - name: Auditoria
+    description: S40 — bitácora de solo anexado
+  - name: ESB
+    description: Bus lógico — outbox transaccional, despacho y cola de fallidos
+  - name: Saga
+    description: Orquestación BPM del proceso KYC, cierre y comisión
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token emitido por Microsoft Entra ID para el cliente de la
+        SPA. El backend valida firma, emisor, audiencia y `scp`/`roles`, y
+        resuelve la cartera con el claim `oid`.
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Página solicitada, desde 1.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      description: Elementos por página.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: |
+        Identificador de correlación de la operación. Se propaga a la
+        auditoría y a los eventos del outbox. Si se omite, el backend lo
+        genera.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Clave de idempotencia del comando. Obligatoria en operaciones con
+        efectos irreversibles. Repetir la clave con el mismo cuerpo
+        devuelve la respuesta original; con un cuerpo distinto responde
+        422.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 100
+    ContactoId:
+      name: contactoId
+      in: path
+      required: true
+      description: Identificador del contacto.
+      schema:
+        type: integer
+    RepresentanteId:
+      name: representanteId
+      in: path
+      required: true
+      description: Identificador del representante.
+      schema:
+        type: integer
+    DireccionId:
+      name: direccionId
+      in: path
+      required: true
+      description: Identificador de la dirección.
+      schema:
+        type: integer
+    TrabajoId:
+      name: trabajoId
+      in: path
+      required: true
+      description: Identificador del trabajo dependiente.
+      schema:
+        type: integer
+    OportunidadId:
+      name: oportunidadId
+      in: path
+      required: true
+      description: Identificador de la oportunidad.
+      schema:
+        type: integer
+    ExpedienteId:
+      name: expedienteId
+      in: path
+      required: true
+      description: Identificador del expediente KYC.
+      schema:
+        type: integer
+    DocumentoId:
+      name: documentoId
+      in: path
+      required: true
+      description: Identificador del documento KYC dentro del expediente.
+      schema:
+        type: integer
+    CierreId:
+      name: cierreId
+      in: path
+      required: true
+      description: Identificador del cierre de inversión.
+      schema:
+        type: integer
+    ComisionId:
+      name: comisionId
+      in: path
+      required: true
+      description: Identificador de la comisión.
+      schema:
+        type: integer
+    EventoId:
+      name: eventoId
+      in: path
+      required: true
+      description: Identificador del evento de auditoría (bigint como string).
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+    OutboxId:
+      name: outboxId
+      in: path
+      required: true
+      description: Identificador del mensaje en el outbox (bigint como string).
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+    CorrelationIdPath:
+      name: correlationId
+      in: path
+      required: true
+      description: Identificador de correlación de la instancia de saga.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+
+  headers:
+    CorrelationId:
+      description: Identificador de correlación de la operación.
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Datos de entrada inválidos.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    Unauthorized:
+      description: Token ausente, inválido o vencido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UnauthorizedResponse'
+    Forbidden:
+      description: El rol o la pertenencia a la cartera no autoriza la operación.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForbiddenResponse'
+    NotFound:
+      description: El recurso no existe o no pertenece a la cartera del usuario.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+    Conflict:
+      description: La operación contradice una regla de negocio o el estado actual.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+    UnprocessableEntity:
+      description: La clave de idempotencia se reutilizó con un cuerpo distinto.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+    InternalError:
+      description: Error no controlado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+
+  schemas:
+    ErrorMessage:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          examples:
+            - Contacto no encontrado
+
+    ValidationErrors:
+      type: object
+      required: [fieldErrors, formErrors]
+      properties:
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        formErrors:
+          type: array
+          items:
+            type: string
+
+    ValidationErrorResponse:
+      type: object
+      required: [message, errors]
+      properties:
+        message:
+          type: string
+        errors:
+          $ref: '#/components/schemas/ValidationErrors'
+
+    UnauthorizedResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          const: Unauthorized
+
+    ForbiddenResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          const: Forbidden
+
+    AuditStamp:
+      type: object
+      required: [fecha, nombre, correo, id]
+      properties:
+        fecha:
+          type: [string, 'null']
+          format: date-time
+        nombre:
+          type: string
+        correo:
+          type: string
+        id:
+          type: string
+
+    Contacto:
+      type: object
+      required:
+        - id
+        - pid
+        - tipoContacto
+        - tipoDocumento
+        - numeroDocumento
+        - esPep
+        - estadoContacto
+        - responsableId
+        - creado
+      properties:
+        id:
+          type: string
+          description: Identificador serializado como string.
+        pid:
+          type: integer
+          description: Identificador numérico original de la fila.
+        tipoContacto:
+          type: string
+          enum: [NATURAL, JURIDICA]
+        tipoDocumento:
+          type: string
+          enum: [DNI, CE, PASAPORTE, RUC]
+        numeroDocumento:
+          type: string
+        nombres:
+          type: [string, 'null']
+        apellidos:
+          type: [string, 'null']
+        razonSocial:
+          type: [string, 'null']
+        fechaNacimiento:
+          type: [string, 'null']
+          description: Fecha ISO 8601 (YYYY-MM-DD).
+        sexo:
+          type: [string, 'null']
+          enum: [MASCULINO, FEMENINO, null]
+        estadoCivil:
+          type: [string, 'null']
+        nacionalidad:
+          type: [string, 'null']
+        paisResidencia:
+          type: [string, 'null']
+        esPep:
+          type: boolean
+        estadoContacto:
+          type: string
+          enum: [ACTIVO, INACTIVO]
+        celular:
+          type: [string, 'null']
+        correo:
+          type: [string, 'null']
+        telefonoFijo:
+          type: [string, 'null']
+        responsableId:
+          type: string
+          format: uuid
+        creado:
+          $ref: '#/components/schemas/AuditStamp'
+        actualizado:
+          oneOf:
+            - $ref: '#/components/schemas/AuditStamp'
+            - type: 'null'
+
+    ContactoCreate:
+      type: object
+      additionalProperties: false
+      required: [tipoContacto, tipoDocumento, numeroDocumento]
+      properties:
+        tipoContacto:
+          type: string
+          enum: [NATURAL, JURIDICA]
+        tipoDocumento:
+          type: string
+          enum: [DNI, CE, PASAPORTE, RUC]
+        numeroDocumento:
+          type: string
+          minLength: 5
+          maxLength: 20
+          description: |
+            DNI exige 8 dígitos, RUC 11 dígitos, CE de 6 a 12
+            alfanuméricos y PASAPORTE de 5 a 15 alfanuméricos.
+        nombres:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Obligatorio si `tipoContacto` es NATURAL; prohibido si es JURIDICA.
+        apellidos:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Obligatorio si `tipoContacto` es NATURAL; prohibido si es JURIDICA.
+        razonSocial:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Obligatorio si `tipoContacto` es JURIDICA; prohibido si es NATURAL.
+        fechaNacimiento:
+          type: string
+          format: date
+        sexo:
+          type: string
+          enum: [MASCULINO, FEMENINO]
+        estadoCivil:
+          type: string
+          maxLength: 30
+        nacionalidad:
+          type: string
+          maxLength: 60
+        paisResidencia:
+          type: string
+          maxLength: 60
+        esPep:
+          type: boolean
+          default: false
+        celular:
+          type: string
+          pattern: '^[0-9+\-\s]{6,20}$'
+        correo:
+          type: string
+          format: email
+          maxLength: 150
+        telefonoFijo:
+          type: string
+          pattern: '^[0-9+\-\s]{6,20}$'
+
+    ContactoUpdate:
+      type: object
+      additionalProperties: false
+      description: |
+        Actualización parcial: las claves ausentes no se tocan. Los campos
+        de identidad (`tipoContacto`, `tipoDocumento`, `numeroDocumento`)
+        no se pueden cambiar.
+      properties:
+        nombres:
+          type: string
+          minLength: 1
+          maxLength: 120
+        apellidos:
+          type: string
+          minLength: 1
+          maxLength: 120
+        razonSocial:
+          type: string
+          minLength: 1
+          maxLength: 200
+        fechaNacimiento:
+          type: string
+          format: date
+        sexo:
+          type: string
+          enum: [MASCULINO, FEMENINO]
+        estadoCivil:
+          type: string
+          maxLength: 30
+        nacionalidad:
+          type: string
+          maxLength: 60
+        paisResidencia:
+          type: string
+          maxLength: 60
+        esPep:
+          type: boolean
+        celular:
+          type: string
+          pattern: '^[0-9+\-\s]{6,20}$'
+        correo:
+          type: string
+          format: email
+          maxLength: 150
+        telefonoFijo:
+          type: string
+          pattern: '^[0-9+\-\s]{6,20}$'
+
+    ContactoActividad:
+      type: object
+      required: [contactoId]
+      properties:
+        contactoId:
+          type: string
+        gradoInstruccion:
+          type: [string, 'null']
+          enum: [TECNICO, SUPERIOR, null]
+        profesionOcupacion:
+          type: [string, 'null']
+        ciiuId:
+          type: [integer, 'null']
+        ciiuCodigo:
+          type: [string, 'null']
+        ciiuDescripcion:
+          type: [string, 'null']
+        creado:
+          $ref: '#/components/schemas/AuditStamp'
+        actualizado:
+          oneOf:
+            - $ref: '#/components/schemas/AuditStamp'
+            - type: 'null'
+
+    ContactoActividadResponse:
+      type: object
+      required: [tipoContacto, actividad]
+      properties:
+        tipoContacto:
+          type: string
+          enum: [NATURAL, JURIDICA]
+        actividad:
+          oneOf:
+            - $ref: '#/components/schemas/ContactoActividad'
+            - type: 'null'
+
+    ContactoActividadUpdateNatural:
+      type: object
+      additionalProperties: false
+      required: [gradoInstruccion, profesionOcupacion]
+      properties:
+        gradoInstruccion:
+          type: string
+          enum: [TECNICO, SUPERIOR]
+        profesionOcupacion:
+          type: string
+          minLength: 1
+          maxLength: 150
+
+    ContactoActividadUpdateJuridica:
+      type: object
+      additionalProperties: false
+      required: [ciiuId]
+      properties:
+        ciiuId:
+          type: integer
+          minimum: 1
+
+    EmpresaBusqueda:
+      type: object
+      required: [contactoId, razonSocial]
+      properties:
+        contactoId:
+          type: string
+        razonSocial:
+          type: string
+
+    Representante:
+      type: object
+      required:
+        - contactoRepresentanteId
+        - representanteId
+        - tipoDocumento
+        - numeroDocumento
+        - nombres
+        - apellidos
+        - cargo
+      properties:
+        contactoRepresentanteId:
+          type: string
+        representanteId:
+          type: string
+        tipoDocumento:
+          type: string
+          enum: [DNI, CE, PASAPORTE]
+        numeroDocumento:
+          type: string
+        nombres:
+          type: string
+        apellidos:
+          type: string
+        cargo:
+          type: string
+        celular:
+          type: [string, 'null']
+        correo:
+          type: [string, 'null']
+
+    RepresentanteCreate:
+      type: object
+      additionalProperties: false
+      required: [tipoDocumento, numeroDocumento, nombres, apellidos, cargo]
+      properties:
+        tipoDocumento:
+          type: string
+          enum: [DNI, CE, PASAPORTE]
+        numeroDocumento:
+          type: string
+          description: DNI 8 dígitos, CE de 6 a 12 alfanuméricos, PASAPORTE de 5 a 15.
+        nombres:
+          type: string
+          minLength: 1
+          maxLength: 120
+        apellidos:
+          type: string
+          minLength: 1
+          maxLength: 120
+        cargo:
+          type: string
+          minLength: 2
+          maxLength: 100
+        celular:
+          type: string
+          pattern: '^[0-9+\-\s]{6,20}$'
+        correo:
+          type: string
+          format: email
+          maxLength: 150
+
+    RepresentanteUpdate:
+      type: object
+      additionalProperties: false
+      required: [nombres, apellidos, cargo]
+      properties:
+        nombres:
+          type: string
+          minLength: 1
+          maxLength: 120
+        apellidos:
+          type: string
+          minLength: 1
+          maxLength: 120
+        cargo:
+          type: string
+          minLength: 2
+          maxLength: 100
+        celular:
+          type: string
+          pattern: '^[0-9+\-\s]{6,20}$'
+        correo:
+          type: string
+          format: email
+          maxLength: 150
+
+    Direccion:
+      type: object
+      required:
+        - idDireccion
+        - idContacto
+        - idDistrito
+        - distrito
+        - provincia
+        - departamento
+        - calle
+        - numero
+        - activo
+        - fechaCreacion
+      properties:
+        idDireccion:
+          type: integer
+        idContacto:
+          type: integer
+        idDistrito:
+          type: integer
+        distrito:
+          type: string
+        provincia:
+          type: string
+        departamento:
+          type: string
+        calle:
+          type: string
+        numero:
+          type: string
+        departamentoInterior:
+          type: [string, 'null']
+        activo:
+          type: boolean
+        fechaCreacion:
+          type: string
+          format: date-time
+        fechaModificacion:
+          type: [string, 'null']
+          format: date-time
+
+    DireccionCreate:
+      type: object
+      additionalProperties: false
+      required: [idDistrito, calle, numero]
+      properties:
+        idDistrito:
+          type: integer
+          minimum: 1
+        calle:
+          type: string
+          minLength: 1
+          maxLength: 250
+        numero:
+          type: string
+          minLength: 1
+          maxLength: 30
+        departamentoInterior:
+          type: string
+          maxLength: 100
+
+    TrabajoDependiente:
+      type: object
+      required: [id, contactoId, empresa, cargo, desde]
+      properties:
+        id:
+          type: string
+        contactoId:
+          type: string
+        empresa:
+          type: object
+          required: [tipo, contactoId, nombre]
+          properties:
+            tipo:
+              type: string
+              enum: [CONTACTO, LIBRE]
+            contactoId:
+              type: [string, 'null']
+            nombre:
+              type: string
+        cargo:
+          type: string
+        desde:
+          type: string
+          format: date
+        hasta:
+          type: [string, 'null']
+          format: date
+        creado:
+          type: object
+          required: [fecha, nombre]
+          properties:
+            fecha:
+              type: [string, 'null']
+              format: date-time
+            nombre:
+              type: [string, 'null']
+
+    TrabajoDependienteCreate:
+      type: object
+      additionalProperties: false
+      description: |
+        Exactamente uno de `empresaContactoId` o `empresaNombreLibre` es
+        obligatorio.
+      required: [cargo, desde]
+      properties:
+        empresaContactoId:
+          type: integer
+          minimum: 1
+          description: Contacto jurídico activo de la cartera del usuario.
+        empresaNombreLibre:
+          type: string
+          minLength: 1
+          maxLength: 200
+        cargo:
+          type: string
+          minLength: 2
+          maxLength: 100
+        desde:
+          type: string
+          format: date
+        hasta:
+          type: string
+          format: date
+          description: Debe ser mayor o igual que `desde`.
+
+    Distrito:
+      type: object
+      required: [idDistrito, distrito, provincia, departamento]
+      properties:
+        idDistrito:
+          type: integer
+        distrito:
+          type: string
+        provincia:
+          type: string
+        departamento:
+          type: string
+
+    Ciiu:
+      type: object
+      required: [ciiuId, codigo, descripcion]
+      properties:
+        ciiuId:
+          type: integer
+        codigo:
+          type: string
+        descripcion:
+          type: string
+
+    ReporteEmbed:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+
+    Etapa:
+      type: object
+      required: [etapaId, codigo, nombre, orden, permiteCierre, esFinal, activo]
+      properties:
+        etapaId:
+          type: integer
+        codigo:
+          type: string
+          examples: [NEGOCIACION]
+        nombre:
+          type: string
+          examples: [Negociación]
+        orden:
+          type: integer
+        permiteCierre:
+          type: boolean
+          description: Única etapa que habilita el paso a Cerrado-ganado.
+        esFinal:
+          type: boolean
+        activo:
+          type: boolean
+
+    EstadoOportunidad:
+      type: string
+      enum: [ACTIVA, GANADA, PERDIDA]
+
+    Oportunidad:
+      type: object
+      required:
+        - oportunidadId
+        - contactoId
+        - responsableId
+        - estado
+        - etapa
+        - fechaCreacionUtc
+        - fechaIngresoEtapaUtc
+      properties:
+        oportunidadId:
+          type: integer
+        contactoId:
+          type: integer
+        contactoNombre:
+          type: string
+        responsableId:
+          type: string
+          format: uuid
+        estado:
+          $ref: '#/components/schemas/EstadoOportunidad'
+        montoEstimado:
+          type: [number, 'null']
+          format: double
+        monedaCodigo:
+          type: [string, 'null']
+          enum: [PEN, USD, null]
+        etapa:
+          $ref: '#/components/schemas/Etapa'
+        fechaCreacionUtc:
+          type: string
+          format: date-time
+        fechaIngresoEtapaUtc:
+          type: string
+          format: date-time
+        fechaResultadoUtc:
+          type: [string, 'null']
+          format: date-time
+        motivoPerdida:
+          type: [string, 'null']
+        kycEstado:
+          type: [string, 'null']
+          enum: [PENDIENTE, EN_PROCESO, VALIDADO, RECHAZADO, null]
+        cierreId:
+          type: [integer, 'null']
+        comisionId:
+          type: [integer, 'null']
+
+    OportunidadCreate:
+      type: object
+      additionalProperties: false
+      required: [contactoId]
+      properties:
+        contactoId:
+          type: integer
+          minimum: 1
+        montoEstimado:
+          type: number
+          exclusiveMinimum: 0
+        monedaCodigo:
+          type: string
+          enum: [PEN, USD]
+          description: Obligatoria cuando se informa `montoEstimado`.
+
+    AvanzarEtapaRequest:
+      type: object
+      additionalProperties: false
+      required: [etapaDestinoCodigo]
+      properties:
+        etapaDestinoCodigo:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: |
+            Debe ser exactamente la etapa siguiente según el orden del
+            catálogo. Para cerrar la oportunidad, la etapa debe tener
+            `permiteCierre = true` y el KYC debe estar VALIDADO.
+        observacion:
+          type: string
+          maxLength: 1000
+
+    PerderOportunidadRequest:
+      type: object
+      additionalProperties: false
+      required: [motivo]
+      properties:
+        motivo:
+          type: string
+          minLength: 3
+          maxLength: 300
+
+    HistorialEtapa:
+      type: object
+      required: [historialId, etapaDestino, fechaCambioUtc]
+      properties:
+        historialId:
+          type: integer
+        etapaOrigen:
+          oneOf:
+            - $ref: '#/components/schemas/Etapa'
+            - type: 'null'
+        etapaDestino:
+          $ref: '#/components/schemas/Etapa'
+        fechaCambioUtc:
+          type: string
+          format: date-time
+        usuarioId:
+          type: [string, 'null']
+          format: uuid
+        usuarioNombre:
+          type: [string, 'null']
+        motivo:
+          type: [string, 'null']
+        observacion:
+          type: [string, 'null']
+        correlationId:
+          type: [string, 'null']
+
+    PageMeta:
+      type: object
+      required: [page, pageSize, total]
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+
+    OportunidadPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Oportunidad'
+
+    KycDocumentoRequerido:
+      type: object
+      required: [documentoRequeridoId, codigo, nombre, obligatorio, orden, activo]
+      properties:
+        documentoRequeridoId:
+          type: integer
+        codigo:
+          type: string
+        nombre:
+          type: string
+        descripcion:
+          type: [string, 'null']
+        obligatorio:
+          type: boolean
+        orden:
+          type: integer
+        activo:
+          type: boolean
+
+    EstadoDocumentoKyc:
+      type: string
+      enum: [PENDIENTE, RECIBIDO, VALIDADO, RECHAZADO]
+
+    KycDocumento:
+      type: object
+      required:
+        - kycDocumentoId
+        - documentoRequeridoId
+        - codigo
+        - nombre
+        - obligatorio
+        - estado
+      properties:
+        kycDocumentoId:
+          type: integer
+        documentoRequeridoId:
+          type: integer
+        codigo:
+          type: string
+        nombre:
+          type: string
+        obligatorio:
+          type: boolean
+        estado:
+          $ref: '#/components/schemas/EstadoDocumentoKyc'
+        archivoReferencia:
+          type: [string, 'null']
+        fechaRecepcionUtc:
+          type: [string, 'null']
+          format: date-time
+        fechaRevisionUtc:
+          type: [string, 'null']
+          format: date-time
+        revisadoPorId:
+          type: [string, 'null']
+          format: uuid
+        revisadoPorNombre:
+          type: [string, 'null']
+        observacion:
+          type: [string, 'null']
+
+    SlaKyc:
+      type: object
+      required: [diasTranscurridos, umbralDias, vencido]
+      properties:
+        diasTranscurridos:
+          type: integer
+        umbralDias:
+          type: integer
+          description: Valor vigente de `KYC_SLA_DIAS`.
+        vencido:
+          type: boolean
+        fechaCorteUtc:
+          type: string
+          format: date-time
+
+    KycExpediente:
+      type: object
+      required:
+        - kycExpedienteId
+        - oportunidadId
+        - contactoId
+        - estado
+        - fechaInicioUtc
+        - sla
+      properties:
+        kycExpedienteId:
+          type: integer
+        oportunidadId:
+          type: integer
+        contactoId:
+          type: integer
+        contactoNombre:
+          type: string
+        estado:
+          type: string
+          enum: [PENDIENTE, EN_PROCESO, VALIDADO, RECHAZADO]
+        fechaInicioUtc:
+          type: string
+          format: date-time
+        fechaDictamenUtc:
+          type: [string, 'null']
+          format: date-time
+        dictamenUsuarioId:
+          type: [string, 'null']
+          format: uuid
+        dictamenUsuarioNombre:
+          type: [string, 'null']
+        observacion:
+          type: [string, 'null']
+        sla:
+          $ref: '#/components/schemas/SlaKyc'
+        documentos:
+          type: array
+          items:
+            $ref: '#/components/schemas/KycDocumento'
+
+    KycExpedientePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/KycExpediente'
+
+    KycExpedienteCreate:
+      type: object
+      additionalProperties: false
+      required: [oportunidadId]
+      properties:
+        oportunidadId:
+          type: integer
+          minimum: 1
+
+    KycDocumentoRecepcionRequest:
+      type: object
+      additionalProperties: false
+      required: [documentoRequeridoCodigo, archivoReferencia]
+      properties:
+        documentoRequeridoCodigo:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: Código del catálogo `KycDocumentosRequeridos`.
+        archivoReferencia:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: URI o identificador del documento en el repositorio documental.
+        observacion:
+          type: string
+          maxLength: 1000
+
+    KycDocumentoUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [estado]
+      properties:
+        estado:
+          type: string
+          enum: [RECIBIDO, VALIDADO, RECHAZADO]
+        observacion:
+          type: string
+          maxLength: 1000
+          description: Obligatoria cuando el estado es RECHAZADO.
+
+    KycDictamenRequest:
+      type: object
+      additionalProperties: false
+      required: [estado]
+      properties:
+        estado:
+          type: string
+          enum: [VALIDADO, RECHAZADO]
+        observacion:
+          type: string
+          maxLength: 1000
+          description: Obligatoria cuando el estado es RECHAZADO.
+
+    Proyecto:
+      type: object
+      required: [proyectoId, codigo, nombre, monedaCodigo, activo]
+      properties:
+        proyectoId:
+          type: integer
+        codigo:
+          type: string
+        nombre:
+          type: string
+        descripcion:
+          type: [string, 'null']
+        monedaCodigo:
+          type: string
+          enum: [PEN, USD]
+        montoObjetivo:
+          type: [number, 'null']
+          format: double
+        activo:
+          type: boolean
+
+    Cierre:
+      type: object
+      required:
+        - cierreId
+        - oportunidadId
+        - proyecto
+        - montoCaptado
+        - monedaCodigo
+        - fechaCierreUtc
+        - freelanceId
+        - estado
+      properties:
+        cierreId:
+          type: integer
+        oportunidadId:
+          type: integer
+        proyecto:
+          $ref: '#/components/schemas/Proyecto'
+        montoCaptado:
+          type: number
+          format: double
+        monedaCodigo:
+          type: string
+          enum: [PEN, USD]
+        fechaCierreUtc:
+          type: string
+          format: date-time
+        freelanceId:
+          type: string
+          format: uuid
+        estado:
+          type: string
+          enum: [REGISTRADO, ANULADO]
+        fechaAnulacionUtc:
+          type: [string, 'null']
+          format: date-time
+        motivoAnulacion:
+          type: [string, 'null']
+        registradoPorId:
+          type: string
+          format: uuid
+        registradoPorNombre:
+          type: [string, 'null']
+        comisionId:
+          type: [integer, 'null']
+        comisionEstado:
+          type: [string, 'null']
+          enum: [PENDIENTE, LIQUIDADA, REVERTIDA, null]
+
+    CierreCreate:
+      type: object
+      additionalProperties: false
+      required: [oportunidadId, proyectoId, montoCaptado, monedaCodigo, fechaCierreUtc]
+      properties:
+        oportunidadId:
+          type: integer
+          minimum: 1
+        proyectoId:
+          type: integer
+          minimum: 1
+        montoCaptado:
+          type: number
+          exclusiveMinimum: 0
+        monedaCodigo:
+          type: string
+          enum: [PEN, USD]
+        fechaCierreUtc:
+          type: string
+          format: date-time
+
+    CierrePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Cierre'
+
+    ComisionReversion:
+      type: object
+      required: [reversionId, comisionId, motivoCodigo, fechaEvaluacionUtc, fechaReversionUtc, registradoPorId]
+      properties:
+        reversionId:
+          type: integer
+        comisionId:
+          type: integer
+        motivoCodigo:
+          type: string
+          enum: [KYC_RECHAZADO, DESEMBOLSO_NO_CONCRETADO]
+        motivoDetalle:
+          type: [string, 'null']
+        estadoKyc:
+          type: [string, 'null']
+        estadoDesembolso:
+          type: [string, 'null']
+        fechaEvaluacionUtc:
+          type: string
+          format: date-time
+        fechaReversionUtc:
+          type: string
+          format: date-time
+        registradoPorId:
+          type: string
+          format: uuid
+        registradoPorNombre:
+          type: [string, 'null']
+        observacion:
+          type: [string, 'null']
+
+    Comision:
+      type: object
+      required:
+        - comisionId
+        - cierreId
+        - oportunidadId
+        - freelanceId
+        - monedaCodigo
+        - montoCaptado
+        - tasaPorcentaje
+        - porcentajeIgv
+        - importeTotal
+        - baseImponible
+        - importeIgv
+        - estado
+        - fechaCalculoUtc
+      properties:
+        comisionId:
+          type: integer
+        cierreId:
+          type: integer
+        oportunidadId:
+          type: integer
+        proyectoNombre:
+          type: string
+        freelanceId:
+          type: string
+          format: uuid
+        monedaCodigo:
+          type: string
+          enum: [PEN, USD]
+        montoCaptado:
+          type: number
+          format: double
+        tasaPorcentaje:
+          type: number
+          format: double
+          examples: [3]
+        porcentajeIgv:
+          type: number
+          format: double
+          examples: [18]
+        importeTotal:
+          type: number
+          format: double
+          description: Importe incluido IGV.
+        baseImponible:
+          type: number
+          format: double
+        importeIgv:
+          type: number
+          format: double
+        estado:
+          type: string
+          enum: [PENDIENTE, LIQUIDADA, REVERTIDA]
+        fechaCalculoUtc:
+          type: string
+          format: date-time
+        reversion:
+          oneOf:
+            - $ref: '#/components/schemas/ComisionReversion'
+            - type: 'null'
+
+    ComisionPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Comision'
+
+    ReversionCreate:
+      type: object
+      additionalProperties: false
+      required: [motivoCodigo, fechaEvaluacionUtc]
+      properties:
+        motivoCodigo:
+          type: string
+          enum: [KYC_RECHAZADO, DESEMBOLSO_NO_CONCRETADO]
+        motivoDetalle:
+          type: string
+          maxLength: 500
+        estadoKyc:
+          type: string
+          maxLength: 20
+        estadoDesembolso:
+          type: string
+          maxLength: 20
+        fechaEvaluacionUtc:
+          type: string
+          format: date-time
+        observacion:
+          type: string
+          maxLength: 1000
+
+    AuditoriaEvento:
+      type: object
+      required:
+        - eventoId
+        - fechaEventoUtc
+        - servicioCodigo
+        - operacion
+        - resultado
+      properties:
+        eventoId:
+          type: string
+        fechaEventoUtc:
+          type: string
+          format: date-time
+        correlationId:
+          type: [string, 'null']
+        usuarioId:
+          type: [string, 'null']
+          format: uuid
+        usuarioNombre:
+          type: [string, 'null']
+        rolCodigo:
+          type: [string, 'null']
+        servicioCodigo:
+          type: string
+          examples: [S15]
+        operacion:
+          type: string
+          examples: [RegistrarCierre]
+        entidad:
+          type: [string, 'null']
+        entidadId:
+          type: [string, 'null']
+        resultado:
+          type: string
+          enum: [EXITO, RECHAZO, ERROR]
+        valorAnterior:
+          type: [object, 'null']
+        valorNuevo:
+          type: [object, 'null']
+        detalle:
+          type: [object, 'null']
+        direccionIp:
+          type: [string, 'null']
+        userAgent:
+          type: [string, 'null']
+
+    AuditoriaEventoPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditoriaEvento'
+
+    OutboxEvento:
+      type: object
+      required:
+        - outboxId
+        - tipoEvento
+        - agregado
+        - agregadoId
+        - payload
+        - idempotencyKey
+        - estado
+        - intentos
+        - proximoIntentoUtc
+        - creadoFechaUtc
+      properties:
+        outboxId:
+          type: string
+        tipoEvento:
+          type: string
+          enum:
+            - EtapaCambiada
+            - KycEstadoCambiado
+            - CierreGanadoRegistrado
+            - ComisionCalculada
+            - ComisionRevertida
+            - LiquidacionGenerada
+        agregado:
+          type: string
+        agregadoId:
+          type: string
+        payload:
+          type: object
+        correlationId:
+          type: [string, 'null']
+        idempotencyKey:
+          type: string
+        estado:
+          type: string
+          enum: [PENDIENTE, EN_PROCESO, PUBLICADO, FALLIDO, MUERTO]
+        intentos:
+          type: integer
+        proximoIntentoUtc:
+          type: string
+          format: date-time
+        ultimoError:
+          type: [string, 'null']
+        creadoFechaUtc:
+          type: string
+          format: date-time
+        procesadoFechaUtc:
+          type: [string, 'null']
+          format: date-time
+
+    OutboxEventoPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/OutboxEvento'
+
+    OutboxProcesarRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        limite:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+
+    OutboxProcesarResultado:
+      type: object
+      required: [procesados, publicados, fallidos, muertos]
+      properties:
+        procesados:
+          type: integer
+        publicados:
+          type: integer
+        fallidos:
+          type: integer
+        muertos:
+          type: integer
+
+    SagaPaso:
+      type: object
+      required: [sagaPasoId, orden, servicioCodigo, accion, estado]
+      properties:
+        sagaPasoId:
+          type: string
+        orden:
+          type: integer
+        servicioCodigo:
+          type: string
+        accion:
+          type: string
+        estado:
+          type: string
+          enum: [PENDIENTE, EN_CURSO, COMPLETADO, FALLIDO, COMPENSADO]
+        iniciadoUtc:
+          type: [string, 'null']
+          format: date-time
+        finalizadoUtc:
+          type: [string, 'null']
+          format: date-time
+        error:
+          type: [string, 'null']
+
+    SagaInstancia:
+      type: object
+      required:
+        - sagaInstanciaId
+        - correlationId
+        - oportunidadId
+        - proceso
+        - estado
+        - pasoActual
+        - iniciadaUtc
+      properties:
+        sagaInstanciaId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+        oportunidadId:
+          type: integer
+        proceso:
+          type: string
+          examples: [KYC_CIERRE_COMISION]
+        estado:
+          type: string
+          enum: [EN_CURSO, COMPLETADA, COMPENSADA, FALLIDA]
+        pasoActual:
+          type: integer
+        iniciadaUtc:
+          type: string
+          format: date-time
+        finalizadaUtc:
+          type: [string, 'null']
+          format: date-time
+        ultimoError:
+          type: [string, 'null']
+        pasos:
+          type: array
+          items:
+            $ref: '#/components/schemas/SagaPaso'
+
+paths:
+  # ------------------------------------------------------------------
+  # Superficie existente (implementada y verificada)
+  # ------------------------------------------------------------------
+  /contactos:
+    get:
+      tags: [Contactos]
+      operationId: listarContactos
+      summary: Lista los contactos de la cartera del usuario
+      description: |
+        Devuelve un array sin envoltorio, ordenado por `Id` descendente.
+        Un usuario solo ve los contactos cuyo `responsableId` coincide con
+        su `oid`.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      responses:
+        '200':
+          description: Contactos de la cartera.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Contacto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Contactos]
+      operationId: crearContacto
+      summary: Crea un contacto
+      description: |
+        El `responsableId` y los datos de creación se toman del token, no
+        del cuerpo. El estado inicial es `ACTIVO`. Un documento repetido
+        responde `409`.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactoCreate'
+      responses:
+        '201':
+          description: Contacto creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contacto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contactos/empresas:
+    get:
+      tags: [Contactos]
+      operationId: buscarEmpresas
+      summary: Busca contactos jurídicos activos de la cartera
+      description: Devuelve como máximo 20 coincidencias por razón social.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - name: search
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 200
+      responses:
+        '200':
+          description: Coincidencias.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmpresaBusqueda'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contactos/{id}:
+    get:
+      tags: [Contactos]
+      operationId: obtenerContacto
+      summary: Obtiene un contacto por identificador
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Contacto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contacto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Contactos]
+      operationId: actualizarContacto
+      summary: Actualiza parcialmente un contacto
+      description: |
+        Solo se modifican las claves presentes. Un cuerpo vacío devuelve el
+        contacto sin escribir. Los campos de identidad no se pueden
+        cambiar.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactoUpdate'
+      responses:
+        '200':
+          description: Contacto actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contacto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contactos/{contactoId}/actividad:
+    get:
+      tags: [Contactos]
+      operationId: obtenerActividadContacto
+      summary: Obtiene la actividad económica o profesional del contacto
+      description: 'Devuelve `actividad: null` cuando todavía no existe fila.'
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+      responses:
+        '200':
+          description: Actividad del contacto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactoActividadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Contactos]
+      operationId: actualizarActividadContacto
+      summary: Registra o actualiza la actividad del contacto
+      description: |
+        La rama la decide el `tipoContacto` almacenado, no el cuerpo. Un
+        contacto NATURAL envía grado y profesión; uno JURIDICA envía
+        `ciiuId`. Enviar la rama contraria responde `400`.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/ContactoActividadUpdateNatural'
+                - $ref: '#/components/schemas/ContactoActividadUpdateJuridica'
+      responses:
+        '200':
+          description: Actividad actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactoActividadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contactos/{contactoId}/representantes:
+    get:
+      tags: [Representantes]
+      operationId: listarRepresentantes
+      summary: Lista los representantes activos de un contacto jurídico
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+      responses:
+        '200':
+          description: Representantes activos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Representante'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Representantes]
+      operationId: crearRepresentante
+      summary: Registra un representante en un contacto jurídico
+      description: |
+        Reutiliza la persona si ya existe por tipo y número de documento, y
+        reactiva la relación si estaba inactiva. Una relación activa
+        duplicada responde `409`.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepresentanteCreate'
+      responses:
+        '201':
+          description: Representante registrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Representante'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contactos/{contactoId}/representantes/{representanteId}:
+    patch:
+      tags: [Representantes]
+      operationId: actualizarRepresentante
+      summary: Actualiza un representante
+      description: Requiere el objeto completo, no es parcial.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+        - $ref: '#/components/parameters/RepresentanteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepresentanteUpdate'
+      responses:
+        '200':
+          description: Representante actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Representante'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Representantes]
+      operationId: desactivarRepresentante
+      summary: Desactiva la relación con un representante
+      description: Baja lógica (`Activo = 0`).
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+        - $ref: '#/components/parameters/RepresentanteId'
+      responses:
+        '204':
+          description: Relación desactivada.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contactos/{contactoId}/direcciones:
+    get:
+      tags: [Direcciones]
+      operationId: listarDirecciones
+      summary: Lista las direcciones activas de un contacto
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+      responses:
+        '200':
+          description: Direcciones activas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Direccion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Direcciones]
+      operationId: crearDireccion
+      summary: Agrega una dirección a un contacto
+      description: El distrito debe existir y estar activo.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DireccionCreate'
+      responses:
+        '201':
+          description: Dirección creada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Direccion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contactos/{contactoId}/direcciones/{direccionId}:
+    patch:
+      tags: [Direcciones]
+      operationId: actualizarDireccion
+      summary: Actualiza una dirección
+      description: Requiere el objeto completo, no es parcial.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+        - $ref: '#/components/parameters/DireccionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DireccionCreate'
+      responses:
+        '200':
+          description: Dirección actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Direccion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Direcciones]
+      operationId: desactivarDireccion
+      summary: Desactiva una dirección
+      description: Baja lógica.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+        - $ref: '#/components/parameters/DireccionId'
+      responses:
+        '204':
+          description: Dirección desactivada.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contactos/{contactoId}/trabajos-dependientes:
+    get:
+      tags: [TrabajosDependientes]
+      operationId: listarTrabajosDependientes
+      summary: Lista el historial laboral de un contacto natural
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+      responses:
+        '200':
+          description: Trabajos dependientes activos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrabajoDependiente'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [TrabajosDependientes]
+      operationId: crearTrabajoDependiente
+      summary: Registra un trabajo dependiente
+      description: |
+        Aplica solo a contactos NATURAL. La empresa puede ser un contacto
+        jurídico activo de la cartera o un nombre libre.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrabajoDependienteCreate'
+      responses:
+        '201':
+          description: Trabajo dependiente creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrabajoDependiente'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /contactos/{contactoId}/trabajos-dependientes/{trabajoId}:
+    patch:
+      tags: [TrabajosDependientes]
+      operationId: actualizarTrabajoDependiente
+      summary: Actualiza un trabajo dependiente
+      description: Requiere el objeto completo, no es parcial.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+        - $ref: '#/components/parameters/TrabajoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrabajoDependienteCreate'
+      responses:
+        '200':
+          description: Trabajo dependiente actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrabajoDependiente'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [TrabajosDependientes]
+      operationId: desactivarTrabajoDependiente
+      summary: Desactiva un trabajo dependiente
+      description: Baja lógica.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/ContactoId'
+        - $ref: '#/components/parameters/TrabajoId'
+      responses:
+        '204':
+          description: Trabajo dependiente desactivado.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /distritos:
+    get:
+      tags: [Ubigeo]
+      operationId: buscarDistritos
+      summary: Busca distritos por nombre
+      description: Devuelve como máximo 20 coincidencias.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - name: search
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 100
+      responses:
+        '200':
+          description: Coincidencias.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Distrito'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ciiu:
+    get:
+      tags: [CIIU]
+      operationId: buscarCiiu
+      summary: Busca actividades económicas CIIU
+      description: |
+        Busca por código o descripción, máximo 20 coincidencias. El
+        catálogo del volcado está vacío, por lo que hoy puede devolver
+        `[]` con datos reales.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - name: search
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 100
+      responses:
+        '200':
+          description: Coincidencias.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Ciiu'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reportes/{key}:
+    get:
+      tags: [Reportes]
+      operationId: obtenerReporteEmbed
+      summary: Devuelve la URL de inserción de un reporte Power BI
+      description: |
+        Requiere autenticación, pero no un rol fijo: la autorización se
+        resuelve contra `dbo.ReporteRoles`. Es el único endpoint de negocio
+        que hoy no lleva cabeceras CORS.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [avance_ejecutivas, control_operaciones, funnel_conversion]
+      responses:
+        '200':
+          description: URL de inserción.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReporteEmbed'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  # ------------------------------------------------------------------
+  # Servicios nuevos del corte vertical APF3
+  # ------------------------------------------------------------------
+  /pipeline/etapas:
+    get:
+      tags: [Pipeline]
+      operationId: listarEtapasPipeline
+      summary: Lista el catálogo de etapas del pipeline
+      description: |
+        Las etapas se siembran como datos. La única con `permiteCierre` en
+        verdadero habilita el paso a Cerrado-ganado.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, gerencia_general]
+      responses:
+        '200':
+          description: |
+            Catálogo completo ordenado por `orden`. Incluye las etapas
+            inactivas con `activo: false` para que el cliente distinga
+            "no existe" de "está desactivada"; solo las activas son
+            destinos válidos de avance.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Etapa'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /pipeline/oportunidades:
+    get:
+      tags: [Pipeline]
+      operationId: listarOportunidades
+      summary: Lista oportunidades del pipeline
+      description: |
+        El freelance ve únicamente su cartera. Dirección Comercial y
+        Gerencia General ven todas las oportunidades.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, gerencia_general]
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/EstadoOportunidad'
+        - name: etapaCodigo
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: contactoId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: responsableId
+          in: query
+          required: false
+          description: Solo aplica a roles con visibilidad de cartera ajena.
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Página de oportunidades.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OportunidadPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Pipeline]
+      operationId: crearOportunidad
+      summary: Crea una oportunidad en la primera etapa
+      description: |
+        El responsable es el usuario autenticado. La oportunidad nace en
+        la primera etapa activa del catálogo y en estado ACTIVA.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OportunidadCreate'
+      responses:
+        '201':
+          description: Oportunidad creada.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Oportunidad'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /pipeline/oportunidades/{oportunidadId}:
+    get:
+      tags: [Pipeline]
+      operationId: obtenerOportunidad
+      summary: Obtiene una oportunidad
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, gerencia_general]
+      parameters:
+        - $ref: '#/components/parameters/OportunidadId'
+      responses:
+        '200':
+          description: Oportunidad.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Oportunidad'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /pipeline/oportunidades/{oportunidadId}/avanzar:
+    post:
+      tags: [Pipeline]
+      operationId: avanzarEtapaOportunidad
+      summary: Avanza la oportunidad a la etapa siguiente
+      description: |
+        Solo se permite el avance secuencial. Para llegar a la etapa que
+        permite cierre se exige el KYC en estado VALIDADO; si no se cumple,
+        responde `409`. El cambio publica `EtapaCambiada` en el outbox y se
+        registra en la auditoría.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/OportunidadId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvanzarEtapaRequest'
+      responses:
+        '200':
+          description: Oportunidad actualizada.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Oportunidad'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            La etapa destino no es la siguiente, la oportunidad ya cerró o
+            el KYC no está validado cuando la etapa lo exige.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /pipeline/oportunidades/{oportunidadId}/perder:
+    post:
+      tags: [Pipeline]
+      operationId: marcarOportunidadPerdida
+      summary: Marca la oportunidad como perdida
+      description: |
+        El motivo es obligatorio. La oportunidad no se elimina: cambia a
+        estado PERDIDA y conserva el historial.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/OportunidadId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerderOportunidadRequest'
+      responses:
+        '200':
+          description: Oportunidad actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Oportunidad'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /pipeline/oportunidades/{oportunidadId}/historial:
+    get:
+      tags: [Pipeline]
+      operationId: obtenerHistorialOportunidad
+      summary: Devuelve el historial de transiciones
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, gerencia_general]
+      parameters:
+        - $ref: '#/components/parameters/OportunidadId'
+      responses:
+        '200':
+          description: Transiciones en orden cronológico.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HistorialEtapa'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kyc/documentos-requeridos:
+    get:
+      tags: [KYC]
+      operationId: listarDocumentosRequeridosKyc
+      summary: Lista el catálogo del checklist KYC
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, compliance]
+      responses:
+        '200':
+          description: Documentos del checklist.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/KycDocumentoRequerido'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kyc/expedientes:
+    get:
+      tags: [KYC]
+      operationId: listarExpedientesKyc
+      summary: Lista expedientes KYC
+      description: |
+        El freelance solo ve los expedientes de su cartera. Compliance ve
+        todos.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, compliance]
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PENDIENTE, EN_PROCESO, VALIDADO, RECHAZADO]
+        - name: contactoId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: oportunidadId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Página de expedientes.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KycExpedientePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [KYC]
+      operationId: crearExpedienteKyc
+      summary: Genera el expediente KYC de una oportunidad
+      description: |
+        Crea el expediente y genera el checklist a partir del catálogo
+        vigente. Una oportunidad tiene un solo expediente; repetir la
+        operación responde `409`.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, compliance]
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycExpedienteCreate'
+      responses:
+        '201':
+          description: Expediente creado con su checklist.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KycExpediente'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kyc/expedientes/{expedienteId}:
+    get:
+      tags: [KYC]
+      operationId: obtenerExpedienteKyc
+      summary: Obtiene un expediente con su checklist y su SLA
+      description: |
+        El detalle documental solo es visible para Compliance y para el
+        freelance asignado a la oportunidad.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, compliance]
+      parameters:
+        - $ref: '#/components/parameters/ExpedienteId'
+      responses:
+        '200':
+          description: Expediente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KycExpediente'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kyc/expedientes/{expedienteId}/documentos:
+    post:
+      tags: [KYC]
+      operationId: registrarRecepcionDocumentoKyc
+      summary: Registra la recepción de un documento del checklist
+      description: |
+        El estado pasa a RECIBIDO y se guarda la referencia del archivo.
+        Si el documento ya estaba recibido, la operación es idempotente.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, compliance]
+      parameters:
+        - $ref: '#/components/parameters/ExpedienteId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycDocumentoRecepcionRequest'
+      responses:
+        '201':
+          description: Documento actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KycDocumento'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kyc/expedientes/{expedienteId}/documentos/{documentoId}:
+    patch:
+      tags: [KYC]
+      operationId: revisarDocumentoKyc
+      summary: Cambia el estado de revisión de un documento
+      description: |
+        Solo Compliance puede pasar un documento a VALIDADO o RECHAZADO.
+        El freelance asignado solo puede registrar la recepción. Un rechazo
+        exige observación.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, compliance]
+      parameters:
+        - $ref: '#/components/parameters/ExpedienteId'
+        - $ref: '#/components/parameters/DocumentoId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycDocumentoUpdateRequest'
+      responses:
+        '200':
+          description: Documento actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KycDocumento'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kyc/expedientes/{expedienteId}/dictamen:
+    post:
+      tags: [KYC]
+      operationId: dictaminarExpedienteKyc
+      summary: Emite el dictamen global del expediente
+      description: |
+        Solo Compliance. Un dictamen VALIDADO exige que todos los
+        documentos obligatorios estén VALIDADOS; si no, responde `409`. El
+        estado aprobado habilita el avance del pipeline y publica
+        `KycEstadoCambiado`.
+      security:
+        - bearerAuth: []
+      x-required-roles: [compliance]
+      parameters:
+        - $ref: '#/components/parameters/ExpedienteId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycDictamenRequest'
+      responses:
+        '200':
+          description: Expediente dictaminado.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KycExpediente'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kyc/expedientes/{expedienteId}/sla:
+    get:
+      tags: [KYC]
+      operationId: obtenerSlaKyc
+      summary: Calcula los días transcurridos frente al SLA
+      description: |
+        Recalcula en cada consulta. El umbral se lee de
+        `ConfiguracionParametros.KYC_SLA_DIAS`; no está codificado.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, compliance]
+      parameters:
+        - $ref: '#/components/parameters/ExpedienteId'
+      responses:
+        '200':
+          description: Estado frente al SLA.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlaKyc'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /proyectos:
+    get:
+      tags: [Cierres]
+      operationId: listarProyectos
+      summary: Lista los proyectos activos
+      description: Catálogo mínimo de S11, dependencia del cierre.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, administracion]
+      responses:
+        '200':
+          description: Proyectos activos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Proyecto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /cierres:
+    get:
+      tags: [Cierres]
+      operationId: listarCierres
+      summary: Lista cierres de inversión
+      description: |
+        El freelance solo ve los cierres de su cartera. Dirección
+        Comercial, Administración y Gerencia General ven todos.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, administracion, gerencia_general]
+      parameters:
+        - name: proyectoId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: freelanceId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: estado
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [REGISTRADO, ANULADO]
+        - name: desde
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: hasta
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Página de cierres.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CierrePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Cierres]
+      operationId: registrarCierre
+      summary: Registra el cierre ganado de una inversión
+      description: |
+        Precondiciones: la oportunidad pertenece a la cartera del usuario,
+        el KYC está VALIDADO y la oportunidad está en la etapa que permite
+        cierre. Solo se admite un cierre por oportunidad.
+
+        El cierre y el evento `CierreGanadoRegistrado` se guardan en la
+        misma transacción (outbox). El cálculo de la comisión (S16) ocurre
+        al consumir el evento. La clave `Idempotency-Key` evita duplicados
+        si el cliente reintenta.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CierreCreate'
+      responses:
+        '201':
+          description: Cierre registrado.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cierre'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Ya existe un cierre para la oportunidad, el KYC no está
+            validado o el proyecto no está activo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /cierres/{cierreId}:
+    get:
+      tags: [Cierres]
+      operationId: obtenerCierre
+      summary: Obtiene un cierre con el estado de su comisión
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, administracion, gerencia_general]
+      parameters:
+        - $ref: '#/components/parameters/CierreId'
+      responses:
+        '200':
+          description: Cierre.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cierre'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /comisiones:
+    get:
+      tags: [Comisiones]
+      operationId: listarComisiones
+      summary: Lista comisiones
+      description: |
+        El freelance solo ve sus comisiones. Dirección Comercial,
+        Administración y Gerencia General ven todas.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, administracion, gerencia_general]
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PENDIENTE, LIQUIDADA, REVERTIDA]
+        - name: freelanceId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: desde
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: hasta
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Página de comisiones.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComisionPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /comisiones/{comisionId}:
+    get:
+      tags: [Comisiones]
+      operationId: obtenerComision
+      summary: Obtiene una comisión y su reversión, si existe
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, administracion, gerencia_general]
+      parameters:
+        - $ref: '#/components/parameters/ComisionId'
+      responses:
+        '200':
+          description: Comisión.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /comisiones/{comisionId}/reversion:
+    post:
+      tags: [Comisiones]
+      operationId: revertirComision
+      summary: Revierte una comisión pendiente
+      description: |
+        Registra el motivo y el estado observado, marca la comisión como
+        REVERTIDA sin eliminar el registro original y publica
+        `ComisionRevertida`.
+
+        Solo se revierte una comisión PENDIENTE. Si ya fue LIQUIDADA, la
+        política abierta de APF2 se resuelve aquí rechazando el ajuste con
+        `409`: la corrección exige un movimiento inverso auditado, fuera de
+        este corte.
+      security:
+        - bearerAuth: []
+      x-required-roles: [administracion, compliance]
+      parameters:
+        - $ref: '#/components/parameters/ComisionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReversionCreate'
+      responses:
+        '200':
+          description: Comisión revertida.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comision'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: La comisión ya está revertida o liquidada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auditoria/eventos:
+    get:
+      tags: [Auditoria]
+      operationId: listarEventosAuditoria
+      summary: Consulta la bitácora de auditoría
+      description: |
+        La bitácora es de solo anexado: no existe endpoint de escritura ni
+        de modificación. Las marcas de tiempo están en UTC.
+      security:
+        - bearerAuth: []
+      x-required-roles: [administracion, gerencia_general, compliance]
+      parameters:
+        - name: servicioCodigo
+          in: query
+          required: false
+          schema:
+            type: string
+            examples: [S15]
+        - name: entidad
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: entidadId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: correlationId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: usuarioId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: resultado
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [EXITO, RECHAZO, ERROR]
+        - name: desde
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: hasta
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Página de eventos.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditoriaEventoPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auditoria/eventos/{eventoId}:
+    get:
+      tags: [Auditoria]
+      operationId: obtenerEventoAuditoria
+      summary: Obtiene un evento de auditoría
+      security:
+        - bearerAuth: []
+      x-required-roles: [administracion, gerencia_general, compliance]
+      parameters:
+        - $ref: '#/components/parameters/EventoId'
+      responses:
+        '200':
+          description: Evento.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditoriaEvento'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /esb/outbox:
+    get:
+      tags: [ESB]
+      operationId: listarOutbox
+      summary: Inspecciona el outbox transaccional
+      security:
+        - bearerAuth: []
+      x-required-roles: [administracion]
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PENDIENTE, EN_PROCESO, PUBLICADO, FALLIDO, MUERTO]
+        - name: tipoEvento
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Página de mensajes.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxEventoPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /esb/outbox/fallidos:
+    get:
+      tags: [ESB]
+      operationId: listarOutboxFallidos
+      summary: Lista la cola de mensajes fallidos
+      description: Mensajes en estado MUERTO tras agotar los reintentos.
+      security:
+        - bearerAuth: []
+      x-required-roles: [administracion]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Página de mensajes fallidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxEventoPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /esb/outbox/{outboxId}:
+    get:
+      tags: [ESB]
+      operationId: obtenerOutboxEvento
+      summary: Obtiene un mensaje del outbox
+      security:
+        - bearerAuth: []
+      x-required-roles: [administracion]
+      parameters:
+        - $ref: '#/components/parameters/OutboxId'
+      responses:
+        '200':
+          description: Mensaje con su payload y sus intentos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxEvento'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /esb/outbox/procesar:
+    post:
+      tags: [ESB]
+      operationId: procesarOutbox
+      summary: Despacha los mensajes pendientes del outbox
+      description: |
+        Equivale a una ejecución del despachador. Toma los mensajes
+        PENDIENTES o FALLIDOS cuyo `proximoIntentoUtc` ya venció, aplica
+        reintentos con backoff exponencial y mueve a MUERTO al agotar
+        `ESB_MAX_REINTENTOS`. Los consumidores son idempotentes por
+        (`outboxId`, consumidor).
+      security:
+        - bearerAuth: []
+      x-required-roles: [administracion]
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutboxProcesarRequest'
+      responses:
+        '200':
+          description: Resultado del despacho.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxProcesarResultado'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sagas/{correlationId}:
+    get:
+      tags: [Saga]
+      operationId: obtenerSaga
+      summary: Consulta la instancia de saga por su correlación
+      description: |
+        Devuelve el estado del proceso BPM y el detalle de sus pasos. Es la
+        evidencia de la relación BPM + SOA.
+      security:
+        - bearerAuth: []
+      x-required-roles: [ejecutivo_inversion, direccion_comercial, administracion, gerencia_general]
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdPath'
+      responses:
+        '200':
+          description: Instancia de saga.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SagaInstancia'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
