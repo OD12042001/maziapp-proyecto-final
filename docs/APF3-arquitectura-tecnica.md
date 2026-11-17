@@ -174,12 +174,13 @@ Reglas de la saga:
 ```bash
 docker compose up -d                    # SQL Server 2022 en localhost:14333
 ./database/init-local.ps1               # esquema + datos de desarrollo (idempotente)
-cd maziapp-backend && npm ci && npm run build && npm start
-cd maziapp-frontend && npm ci && npx ng serve
+cd maziapp-backend && npm ci && npm run start:local   # API en :7071/api + Swagger UI en :7071/api/docs
+cd maziapp-frontend && npm ci && npx ng serve         # SPA en :4200
 ```
 
-Verificación de la cadena completa: la SPA lista contactos leídos del contenedor a través
-de la API, sin Azure y sin login.
+Verificación de la cadena completa: la SPA consume contactos, expedientes KYC (`/kyc`) y
+cierres/comisiones (`/comisiones`) leídos del contenedor SQL Server 2022 a través de la API,
+sin depender de Azure y con Swagger UI expuesto en `http://localhost:7071/api/docs`.
 
 ---
 
@@ -188,12 +189,13 @@ de la API, sin Azure y sin login.
 | Capacidad | Estado |
 |-----------|--------|
 | Contactos, representantes, direcciones, trabajos dependientes, actividad, empresas, ubigeo, CIIU, reportería | Implementado (21 endpoints funcionales + `GET /reportes/{key}`) |
-| Esquema y datos locales | Implementado (14 tablas, 2 167 registros del volcado) |
-| Esquema APF3: pipeline, KYC, cierres, comisiones, liquidaciones, auditoría, outbox, idempotencia y saga | Implementado (20 tablas, 23 FK, 43 CHECK, 18 UNIQUE; verificado sobre SQL Server real) |
+| Esquema y datos locales | Implementado (14 tablas base, 2 167 registros del volcado) |
+| Esquema APF3: pipeline, KYC, cierres, comisiones, liquidaciones, auditoría, outbox, idempotencia y saga | Implementado (20 tablas nuevas, 34 en total; 23 FK, 43 CHECK, 18 UNIQUE, trigger `TR_AuditoriaEventos_SoloAnexado` y vista `vw_OportunidadResumen`) |
 | Catálogos y parámetros APF3 | Implementado (2 monedas, 8 etapas, 5 documentos KYC, 8 parámetros, 2 proyectos) |
 | Contrato OpenAPI | Implementado (OpenAPI 3.1.0, 39 rutas / 51 operaciones; válido con Redocly) |
-| Implementación backend de S06, S12, S13, S15, S16, S17, S40, ESB y saga | **No iniciada** — espera validación del modelo de datos y del contrato |
-| Postman y Swagger UI | Pendiente |
+| Implementación backend de S06, S12, S13, S15, S16, S17, S40, ESB y saga | **Implementado y verificado** — 29 operaciones nuevas + preflights CORS, 839/839 tests unitarios en 90 suites y verificaciones E2E contra SQL Server 2022 real |
+| UI mínima de KYC (`/kyc`) y Comisiones (`/comisiones`) | **Implementada y verificada** — 193/193 tests Vitest en 12 suites y build limpio |
+| Servidor HTTP local (`localServer.ts`), Swagger UI (`/api/docs`) y colección Postman (`docs/MaziApp-APF3.postman_collection.json`) | **Implementado y verificado** |
 
 ---
 

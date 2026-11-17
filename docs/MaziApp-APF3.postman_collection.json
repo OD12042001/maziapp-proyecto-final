@@ -1,0 +1,424 @@
+{
+  "info": {
+    "_postman_id": "b8c4f1e2-9a35-4d71-8c12-3f9e5a7b2d10",
+    "name": "Mazi Flow — APF3 (Semana 15: SOA, ESB Lógico y Saga BPM)",
+    "description": "Colección oficial de evidencias funcionales de la Etapa 3 (APF3) de MaziApp. Cubre el corte vertical completo: S06 Pipeline, S12/S13 KYC + SLA, S15 Cierres (con Idempotency-Key), ESB Lógico (Outbox, reintentos y DLQ), S16/S17 Comisiones (3 % incluido IGV 18 % y reversión), Saga BPM (Proceso KYC_CIERRE_COMISION) y S40 Auditoría de solo anexado con propagación de X-Correlation-Id.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:7071/api" },
+    { "key": "correlationId", "value": "corr-apf3-demo-0001" },
+    { "key": "contactoId", "value": "1" },
+    { "key": "oportunidadId", "value": "1" },
+    { "key": "expedienteId", "value": "1" },
+    { "key": "documentoId", "value": "1" },
+    { "key": "proyectoId", "value": "1" },
+    { "key": "cierreId", "value": "1" },
+    { "key": "comisionId", "value": "1" },
+    { "key": "outboxId", "value": "1" },
+    { "key": "eventoId", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "01 - Pipeline Comercial (S06)",
+      "item": [
+        {
+          "name": "1.1 Listar catálogo de etapas (GET /pipeline/etapas)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/pipeline/etapas"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 y eco de X-Correlation-Id', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get('X-Correlation-Id')).to.eql(pm.collectionVariables.get('correlationId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Crear oportunidad (POST /pipeline/oportunidades)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactoId\": {{contactoId}},\n  \"montoEstimado\": 200000,\n  \"monedaCodigo\": \"PEN\"\n}"
+            },
+            "url": "{{baseUrl}}/pipeline/oportunidades"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Oportunidad creada en PROSPECTO (201)', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var body = pm.response.json();",
+                  "  pm.collectionVariables.set('oportunidadId', String(body.oportunidadId));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Listar oportunidades (GET /pipeline/oportunidades)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/pipeline/oportunidades?estado=ACTIVA&page=1&pageSize=20"
+          }
+        },
+        {
+          "name": "1.4 Obtener oportunidad (GET /pipeline/oportunidades/:id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/pipeline/oportunidades/{{oportunidadId}}"
+          }
+        },
+        {
+          "name": "1.5 Avanzar etapa secuencial (POST /pipeline/oportunidades/:id/avanzar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"etapaDestinoCodigo\": \"CONTACTADO\",\n  \"observacion\": \"Contacto telefónico confirmado\"\n}"
+            },
+            "url": "{{baseUrl}}/pipeline/oportunidades/{{oportunidadId}}/avanzar"
+          }
+        },
+        {
+          "name": "1.6 Consultar historial de etapas (GET /pipeline/oportunidades/:id/historial)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/pipeline/oportunidades/{{oportunidadId}}/historial"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Expediente KYC y SLA (S12 / S13)",
+      "item": [
+        {
+          "name": "2.1 Catálogo de documentos requeridos (GET /kyc/documentos-requeridos)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/kyc/documentos-requeridos"
+          }
+        },
+        {
+          "name": "2.2 Abrir expediente KYC (POST /kyc/expedientes)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oportunidadId\": {{oportunidadId}}\n}"
+            },
+            "url": "{{baseUrl}}/kyc/expedientes"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Expediente KYC creado con checklist (201)', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var body = pm.response.json();",
+                  "  pm.collectionVariables.set('expedienteId', String(body.kycExpedienteId));",
+                  "  if (body.documentos && body.documentos.length > 0) {",
+                  "    pm.collectionVariables.set('documentoId', String(body.documentos[0].kycDocumentoId));",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.3 Registrar recepción documental (POST /kyc/expedientes/:id/documentos)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentoRequeridoCodigo\": \"DOC_IDENTIDAD\",\n  \"archivoReferencia\": \"https://repositorio.maziflow.local/kyc/doc-identidad.pdf\",\n  \"observacion\": \"Documento vigente\"\n}"
+            },
+            "url": "{{baseUrl}}/kyc/expedientes/{{expedienteId}}/documentos"
+          }
+        },
+        {
+          "name": "2.4 Validar documento en checklist — Compliance (PATCH /kyc/expedientes/:id/documentos/:docId)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"VALIDADO\",\n  \"observacion\": \"Verificado por Compliance\"\n}"
+            },
+            "url": "{{baseUrl}}/kyc/expedientes/{{expedienteId}}/documentos/{{documentoId}}"
+          }
+        },
+        {
+          "name": "2.5 Emitir dictamen global — Exclusivo Compliance (POST /kyc/expedientes/:id/dictamen)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"VALIDADO\",\n  \"observacion\": \"Todos los documentos obligatorios validados\"\n}"
+            },
+            "url": "{{baseUrl}}/kyc/expedientes/{{expedienteId}}/dictamen"
+          }
+        },
+        {
+          "name": "2.6 Consultar SLA KYC (GET /kyc/expedientes/:id/sla)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/kyc/expedientes/{{expedienteId}}/sla"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Cierres de Inversión (S15)",
+      "item": [
+        {
+          "name": "3.1 Registrar cierre ganado idempotente (POST /cierres)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "idem-cierre-op-{{oportunidadId}}-v1" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oportunidadId\": {{oportunidadId}},\n  \"proyectoId\": {{proyectoId}},\n  \"montoCaptado\": 200000,\n  \"monedaCodigo\": \"PEN\",\n  \"fechaCierreUtc\": \"2026-11-16T18:00:00.000Z\"\n}"
+            },
+            "url": "{{baseUrl}}/cierres"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cierre registrado (201)', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var body = pm.response.json();",
+                  "  pm.collectionVariables.set('cierreId', String(body.cierreId));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 Listar cierres de inversión (GET /cierres)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/cierres?page=1&pageSize=20"
+          }
+        },
+        {
+          "name": "3.3 Obtener detalle de cierre (GET /cierres/:cierreId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/cierres/{{cierreId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - ESB Lógico (Outbox, Despacho y DLQ)",
+      "item": [
+        {
+          "name": "4.1 Inspeccionar mensajes en Outbox (GET /esb/outbox)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/esb/outbox?page=1&pageSize=20"
+          }
+        },
+        {
+          "name": "4.2 Despachar lote del Outbox — Dispara S16 y Saga BPM (POST /esb/outbox/procesar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limite\": 50\n}"
+            },
+            "url": "{{baseUrl}}/esb/outbox/procesar"
+          }
+        },
+        {
+          "name": "4.3 Consultar cola de fallidos DLQ (GET /esb/outbox/fallidos)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/esb/outbox/fallidos?page=1&pageSize=20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Comisiones y Reversión (S16 / S17)",
+      "item": [
+        {
+          "name": "5.1 Listar comisiones calculadas — 3 % incluido IGV (GET /comisiones)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/comisiones?page=1&pageSize=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lista de comisiones (200)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var body = pm.response.json();",
+                  "  if (body.items && body.items.length > 0) {",
+                  "    pm.collectionVariables.set('comisionId', String(body.items[0].comisionId));",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.2 Obtener comisión y desglose IGV (GET /comisiones/:comisionId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/comisiones/{{comisionId}}"
+          }
+        },
+        {
+          "name": "5.3 Revertir comisión pendiente (POST /comisiones/:comisionId/reversion)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "idem-reversion-com-{{comisionId}}-v1" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivoCodigo\": \"DESEMBOLSO_NO_CONCRETADO\",\n  \"motivoDetalle\": \"Inversionista desistió antes del desembolso\",\n  \"estadoKyc\": \"VALIDADO\",\n  \"estadoDesembolso\": \"FALLIDO\",\n  \"fechaEvaluacionUtc\": \"2026-11-16T19:00:00.000Z\",\n  \"observacion\": \"Reversión dentro de ventana parametrizada (30 días)\"\n}"
+            },
+            "url": "{{baseUrl}}/comisiones/{{comisionId}}/reversion"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Orquestación Saga BPM (S4)",
+      "item": [
+        {
+          "name": "6.1 Consultar instancia de Saga y pasos SOA por correlación (GET /sagas/:correlationId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/sagas/{{correlationId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Bitácora de Auditoría de Solo Anexado (S40)",
+      "item": [
+        {
+          "name": "7.1 Consultar eventos de auditoría por correlación (GET /auditoria/eventos)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/auditoria/eventos?correlationId={{correlationId}}&page=1&pageSize=50"
+          }
+        },
+        {
+          "name": "7.2 Obtener detalle de evento de auditoría (GET /auditoria/eventos/:eventoId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{baseUrl}}/auditoria/eventos/{{eventoId}}"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -13,6 +13,7 @@
     "clean": "rimraf dist",
     "prestart": "npm run clean && npm run build",
     "start": "func start",
+    "start:local": "npm run build && node dist/src/localServer.js",
     "test": "jest"
   },
   "dependencies": {
