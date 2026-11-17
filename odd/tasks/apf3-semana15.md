@@ -50,7 +50,7 @@ Supuestos marcados para confirmar con el negocio (no se codifican, se siembran c
 | T2 | S40 Auditoría: tabla, servicio, endpoints, `X-Correlation-Id` | S2, S3 | inline | pendiente |
 | T3 | ESB lógico: outbox, reintentos, DLQ, idempotencia, contrato de errores implementado | S3 | inline | pendiente |
 | T4 | S06 Pipeline completo: validador, repositorio, servicio, 7 endpoints, preflight CORS | S2, S3 | inline | ✅ 2026-11-16 — 75 tests unitarios del módulo, suite 634/634 en 56 suites, 49 verificaciones HTTP, 41 sobre SQL real y verificación independiente PASS en S2/S3; ver L9–L11 |
-| T4b | S12/S13 KYC: expediente, checklist documental, carga, dictamen (solo `compliance`), SLA | S2, S3 | inline | ✅ 2026-11-16 — 734/734 tests en 62 suites, 47/47 verificaciones sobre SQL real, 63/63 HTTP en dos roles y build limpio; ver L12 |
+| T4b | S12/S13 KYC: expediente, checklist documental, carga, dictamen (solo `compliance`), SLA | S2, S3 | inline | ✅ 2026-11-16 — `f2c84a4`; 734/734 tests en 62 suites, 47/47 verificaciones sobre SQL real, 63/63 HTTP en dos roles y build limpio; ver L12 |
 | T5 | S15 cierre + S16/S17 comisiones | S2, S3 | inline | pendiente |
 | T6 | Saga BPM sobre los servicios implementados | S4 | inline | pendiente |
 | T7 | UI mínima de KYC y Comisiones | S5 | inline | pendiente |
